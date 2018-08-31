@@ -262,18 +262,27 @@ OPCODES = {
 def disassemble(codebuffer, pc):
     asm, opbytes = OPCODES[codebuffer[pc]]
     if opbytes == 3:
-        print(asm % (codebuffer[pc + 2], codebuffer[pc + 1]))
+        print("%04x " % pc + asm % (codebuffer[pc + 2], codebuffer[pc + 1]))
     elif opbytes == 2:
-        print(asm % (codebuffer[pc + 1]))
+        print("%04x " % pc + asm % (codebuffer[pc + 1]))
     else:
-        print(asm)
+        print("%04x " % pc + asm)
     return opbytes
 
 
 def main():
     pc = 0
 
-    with open('invaders.h', 'rb') as f:
+    # MMAP
+    # $0000-$07FF: .h
+    # $0800-$0FFF: .g
+    # $1000-$17FF: .f
+    # $1800-$1FFF: .e
+    # $2000-$23FF: work RAM
+    # $2400-$3FFF: video RAM
+    # $4000-     : RAM mirror
+
+    with open('invaders', 'rb') as f:
         buffer = f.read()
 
     while pc < len(buffer):
