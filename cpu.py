@@ -14,6 +14,18 @@ def emulate(state):
     if opcode[0] == 0x01:
         state.c = opcode[1]
         state.b = opcode[2]
+        state.pc += 2
+    elif opcode[0] == 0x0f:     # RRC / Multiplication
+        x = state.a
+        state.a = ((x & 1) << 7) | (x >> 1)
+        state.cc.cy = (x & 1) == 1
+    elif opcode[0] == 0x1f:     # RAR / Division
+        x = state.a
+        state.a = (state.cc.cy << 7) | (x >> 1)
+        state.cc.cy = (x & 1) == 1
+    elif opcode[0] == 0x2f:     # CMA
+        # python's ~ operator uses signed not, we want unsigned not
+        state.a = state.a ^ 0xff
     elif opcode[0] == 0x41:
         state.b = state.c
     elif opcode[0] == 0x42:
@@ -66,6 +78,7 @@ def emulate(state):
         state.cc.cy = ans > 0xff
         state.cc.p = parity(ans & 0xff)
         state.a = ans & 0xff
+        state.pc += 1
     elif opcode[0] == 0xc9:     # RET
         # set pc to ret adr
         state.pc = state.memory[state.sp] | (state.memory[state.sp + 1] << 8)
@@ -80,5 +93,20 @@ def emulate(state):
         state.memory[state.sp - 2] = ret & 0xff
         state.sp -= 2
         state.pc = (opcode[2] << 8) | opcode[1]
+    elif opcode[0] == 0xe6:     # ANI byte
+        x = state.a & opcode[1]
+        state.cc.z = ((x & 0xff) == 0)
+        state.cc.s = ((x & 0x80) != 0)
+        state.cc.cy = 0
+        state.cc.p = parity(x, 8)
+        state.a = x
+        state.pc += 1
+    elif opcode[0] == 0xfe:     # CPI byte
+        x = state.a - opcode[1]
+        state.cc.z = x == 0
+        state.cc.s = (x & 0x80) != 0
+        state.cc.p = parity(x, 8)
+        state.cc.cy = state.a < opcode[1]
+        state.pc += 1
 
     state.pc += 1
