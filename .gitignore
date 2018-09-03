@@ -3,3 +3,4 @@
 *.g
 *.h
 invaders
+__pycache__

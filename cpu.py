@@ -1,7 +1,33 @@
 from collections import namedtuple
+from disassembler import disassemble
 
-Flags = namedtuple("Flags", "z s p cy ac pad")
-State = namedtuple("State", "a b c d e h l sp pc memory cc int_enable")
+
+class Flags:
+
+    def __init__(self):
+        self.z = 0
+        self.s = 0
+        self.p = 0
+        self.cy = 0
+        self.ac = 0
+        self._pad = 3
+
+
+class State:
+
+    def __init__(self, memory):
+        self.memory = memory
+        self.a = 0
+        self.b = 0
+        self.c = 0
+        self.d = 0
+        self.e = 0
+        self.h = 0
+        self.l = 0
+        self.sp = 0
+        self.pc = 0
+        self.cc = Flags()
+        self.int_enable = 0
 
 
 def emulate(state):
@@ -9,30 +35,38 @@ def emulate(state):
     def parity(n):
         pass
 
-    opcode = state.memory[state.pc]
+    opcode, arg1, arg2 = state.memory[state.pc:state.pc + 3]
 
-    if opcode[0] == 0x01:
-        state.c = opcode[1]
-        state.b = opcode[2]
+    disassemble(state.memory, state.pc)
+    print("\tC=%d, P=%d, S=%d, Z=%d\n" % (state.cc.cy, state.cc.p, state.cc.s, state.cc.z))
+    print("\tA %02x B %02x C %02x D %02x E %02x H %02x L %02x SP %04x\n" % (
+        state.a, state.b, state.c, state.d, state.e, state.h, state.l, state.sp
+    ))
+
+    if opcode == 0x00:
+        pass
+    elif opcode == 0x01:
+        state.c = arg1
+        state.b = arg2
         state.pc += 2
-    elif opcode[0] == 0x0f:     # RRC / Multiplication
+    elif opcode == 0x0f:     # RRC / Multiplication
         x = state.a
         state.a = ((x & 1) << 7) | (x >> 1)
         state.cc.cy = (x & 1) == 1
-    elif opcode[0] == 0x1f:     # RAR / Division
+    elif opcode == 0x1f:     # RAR / Division
         x = state.a
         state.a = (state.cc.cy << 7) | (x >> 1)
         state.cc.cy = (x & 1) == 1
-    elif opcode[0] == 0x2f:     # CMA
+    elif opcode == 0x2f:     # CMA
         # python's ~ operator uses signed not, we want unsigned not
         state.a = state.a ^ 0xff
-    elif opcode[0] == 0x41:
+    elif opcode == 0x41:
         state.b = state.c
-    elif opcode[0] == 0x42:
+    elif opcode == 0x42:
         state.b = state.d
-    elif opcode[0] == 0x43:
+    elif opcode == 0x43:
         state.b = state.e
-    elif opcode[0] == 0x80:     # ADD B
+    elif opcode == 0x80:     # ADD B
         ans = int(state.a) + int(state.b)
         # set zero flag if ans is 0
         # 0x00 & 0xff = 0x00 True
@@ -48,14 +82,14 @@ def emulate(state):
         state.cc.p = parity(ans & 0xff)
         # store 2 bytes of the result into register a
         state.a = ans & 0xff
-    elif opcode[0] == 0x81:     # ADD C
+    elif opcode == 0x81:     # ADD C
         ans = int(state.a) + int(state.c)
         state.cc.z = ((ans & 0xff) == 0)
         state.cc.s = ((ans & 0x80) != 0)
         state.cc.cy = ans > 0xff
         state.cc.p = parity(ans & 0xff)
         state.a = ans & 0xff
-    elif opcode[0] == 0x86:     # ADD M
+    elif opcode == 0x86:     # ADD M
         # shift eight bits left to concatenate H & L
         adr = (state.h << 8) | state.l
         ans = int(state.a) + int(state.memory[adr])
@@ -64,35 +98,36 @@ def emulate(state):
         state.cc.cy = ans > 0xff
         state.cc.p = parity(ans & 0xff)
         state.a = ans & 0xff
-    elif opcode[0] == 0xc1:     # POP B
+    elif opcode == 0xc1:     # POP B
         state.c = state.memory[state.sp]
         state.b = state.memory[state.sp + 1]
         state.sp += 2
-    elif opcode[0] == 0xc2:     # JNZ adr
+    elif opcode == 0xc2:     # JNZ adr
         if state.cc.z == 0:
-            state.pc = (opcode[2] << 8) | opcode[1]
+            state.pc = (arg2 << 8) | arg1
         else:
             state.pc += 2
-    elif opcode[0] == 0xc3:     # JMP adr
-        state.pc = (opcode[2] << 8) | opcode[1]
-    elif opcode[0] == 0xc5:     # PUSH B
+    elif opcode == 0xc3:     # JMP adr
+        state.pc = (arg2 << 8) | arg1
+        return
+    elif opcode == 0xc5:     # PUSH B
         state.memory[state.sp - 1] = state.b
         state.memory[state.sp - 2] = state.c
         state.sp -= 2
-    elif opcode[0] == 0xc6:     # ADI byte
-        ans = int(state.a) + int(opcode[1])
+    elif opcode == 0xc6:     # ADI byte
+        ans = int(state.a) + int(arg1)
         state.cc.z = ((ans & 0xff) == 0)
         state.cc.s = ((ans & 0x80) != 0)
         state.cc.cy = ans > 0xff
         state.cc.p = parity(ans & 0xff)
         state.a = ans & 0xff
         state.pc += 1
-    elif opcode[0] == 0xc9:     # RET
+    elif opcode == 0xc9:     # RET
         # set pc to ret adr
         state.pc = state.memory[state.sp] | (state.memory[state.sp + 1] << 8)
         # restore stack pointer
         state.sp += 2
-    elif opcode[0] == 0xcd:     # CALL adr
+    elif opcode == 0xcd:     # CALL adr
         # return address
         ret = state.pc + 2
         # put high part of ret in pos -1 of the stack
@@ -100,16 +135,16 @@ def emulate(state):
         # put low part of ret in pos -2 of the stack
         state.memory[state.sp - 2] = ret & 0xff
         state.sp -= 2
-        state.pc = (opcode[2] << 8) | opcode[1]
-    elif opcode[0] == 0xe6:     # ANI byte
-        x = state.a & opcode[1]
+        state.pc = (arg2 << 8) | arg1
+    elif opcode == 0xe6:     # ANI byte
+        x = state.a & arg1
         state.cc.z = ((x & 0xff) == 0)
         state.cc.s = ((x & 0x80) != 0)
         state.cc.cy = 0
         state.cc.p = parity(x, 8)
         state.a = x
         state.pc += 1
-    elif opcode[0] == 0xf1:     # POP PSW
+    elif opcode == 0xf1:     # POP PSW
         state.a = state.memory[state.sp + 1]
         psw = state.memory[state.sp]
         # copy each meaningful bit from psw to state
@@ -119,7 +154,7 @@ def emulate(state):
         state.cc.cy = (0x08 == (psw & 0x08))
         state.cc.ac = (0x10 == (psw & 0x10))
         state.sp += 2
-    elif opcode[0] == 0xf5:     # PUSH PSW
+    elif opcode == 0xf5:     # PUSH PSW
         state.memory[state.sp - 1] = state.a
         psw = state.cc.z
         psw |= state.cc.s << 1
@@ -128,12 +163,26 @@ def emulate(state):
         psw |= state.cc.ac << 4
         state.memory[state.sp - 2] = psw
         state.sp -= 2
-    elif opcode[0] == 0xfe:     # CPI byte
-        x = state.a - opcode[1]
+    elif opcode == 0xfe:     # CPI byte
+        x = state.a - arg1
         state.cc.z = x == 0
         state.cc.s = (x & 0x80) != 0
         state.cc.p = parity(x, 8)
-        state.cc.cy = state.a < opcode[1]
+        state.cc.cy = state.a < arg1
         state.pc += 1
+    else:
+        raise NotImplementedError("opcode %02x is not implemented" % opcode)
 
     state.pc += 1
+
+
+def main():
+    with open('invaders', 'rb') as f:
+        state = State(f.read())
+
+    while 1:
+        emulate(state)
+
+
+if __name__ == '__main__':
+    main()
