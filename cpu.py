@@ -1,4 +1,3 @@
-from collections import namedtuple
 from disassembler import disassemble
 
 
@@ -16,7 +15,7 @@ class Flags:
 class State:
 
     def __init__(self, memory):
-        self.memory = memory
+        self.memory = bytearray(memory) + bytearray(0x2000)  # ROM + RAM
         self.a = 0
         self.b = 0
         self.c = 0
@@ -49,6 +48,9 @@ def emulate(state):
         state.c = arg1
         state.b = arg2
         state.pc += 2
+    elif opcode == 0x06:     # MVI B byte
+        state.b = arg1
+        state.pc += 1
     elif opcode == 0x0f:     # RRC / Multiplication
         x = state.a
         state.a = ((x & 1) << 7) | (x >> 1)
@@ -60,6 +62,9 @@ def emulate(state):
     elif opcode == 0x2f:     # CMA
         # python's ~ operator uses signed not, we want unsigned not
         state.a = state.a ^ 0xff
+    elif opcode == 0x31:     # LXI SP
+        state.sp = (arg2 << 8) | arg1
+        state.pc += 2
     elif opcode == 0x41:
         state.b = state.c
     elif opcode == 0x42:
