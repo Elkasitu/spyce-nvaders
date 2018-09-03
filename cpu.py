@@ -141,6 +141,7 @@ def emulate(state):
         state.memory[state.sp - 2] = ret & 0xff
         state.sp -= 2
         state.pc = (arg2 << 8) | arg1
+        return
     elif opcode == 0xe6:     # ANI byte
         x = state.a & arg1
         state.cc.z = ((x & 0xff) == 0)
