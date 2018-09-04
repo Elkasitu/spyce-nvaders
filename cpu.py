@@ -32,7 +32,7 @@ class State:
 def emulate(state):
 
     def parity(n):
-        pass
+        return n % 2 == 0
 
     opcode, arg1, arg2 = state.memory[state.pc:state.pc + 3]
 
@@ -90,6 +90,9 @@ def emulate(state):
     elif opcode == 0x31:     # LXI SP
         state.sp = (arg2 << 8) | arg1
         state.pc += 2
+    elif opcode == 0x36:     # MVI M byte
+        adr = (state.h << 8) | state.l
+        state.memory[adr] = arg1
     elif opcode == 0x41:
         state.b = state.c
     elif opcode == 0x42:
@@ -99,6 +102,8 @@ def emulate(state):
     elif opcode == 0x77:      # MOV M, A
         adr = (state.h << 8) | state.l
         state.memory[adr] = state.a
+    elif opcode == 0x7c:     # MOV A, H
+        state.a = state.h
     elif opcode == 0x80:     # ADD B
         ans = int(state.a) + int(state.b)
         # set zero flag if ans is 0
@@ -175,7 +180,7 @@ def emulate(state):
         state.cc.z = ((x & 0xff) == 0)
         state.cc.s = ((x & 0x80) != 0)
         state.cc.cy = 0
-        state.cc.p = parity(x, 8)
+        state.cc.p = parity(x & 0xff)
         state.a = x
         state.pc += 1
     elif opcode == 0xf1:     # POP PSW
@@ -201,7 +206,7 @@ def emulate(state):
         x = state.a - arg1
         state.cc.z = x == 0
         state.cc.s = (x & 0x80) != 0
-        state.cc.p = parity(x, 8)
+        state.cc.p = parity(x & 0xff)
         state.cc.cy = state.a < arg1
         state.pc += 1
     else:
