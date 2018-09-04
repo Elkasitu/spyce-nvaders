@@ -55,6 +55,9 @@ def emulate(state):
     elif opcode == 0x06:     # MVI B byte
         state.b = arg1
         state.pc += 1
+    elif opcode == 0x0e:     # MVI C byte
+        state.c = arg1
+        state.pc += 1
     elif opcode == 0x0f:     # RRC / Multiplication
         x = state.a
         state.a = ((x & 1) << 7) | (x >> 1)
@@ -68,6 +71,13 @@ def emulate(state):
         n = (n + 1) % 0xffff
         state.d = n >> 8
         state.e = n & 0xff
+    elif opcode == 0x19:     # DAD D
+        ans1 = (state.d << 8) | state.e
+        ans2 = (state.h << 8) | state.l
+        ans = ans1 + ans2
+        state.cc.cy = ans > 0xffff
+        state.h = (ans & 0xffff) >> 8
+        state.l = ans & 0xff
     elif opcode == 0x1a:     # LDAX D
         adr = (state.d << 8) | state.e
         state.a = state.memory[adr]
@@ -84,6 +94,15 @@ def emulate(state):
         n = (n + 1) % 0xffff
         state.h = n >> 8
         state.l = n & 0xff
+    elif opcode == 0x26:     # MVI H
+        state.h = arg1
+        state.pc += 1
+    elif opcode == 0x29:     # DAD H
+        ans = (state.h << 8) | state.l
+        ans <<= 1
+        state.cc.cy = ans > 0xffff
+        state.h = (ans & 0xffff) >> 8
+        state.l = ans & 0xff
     elif opcode == 0x2f:     # CMA
         # python's ~ operator uses signed not, we want unsigned not
         state.a = state.a ^ 0xff
@@ -99,6 +118,8 @@ def emulate(state):
         state.b = state.d
     elif opcode == 0x43:
         state.b = state.e
+    elif opcode == 0x6f:      # MOV L, A
+        state.l = state.a
     elif opcode == 0x77:      # MOV M, A
         adr = (state.h << 8) | state.l
         state.memory[adr] = state.a
@@ -175,6 +196,14 @@ def emulate(state):
         state.sp -= 2
         state.pc = (arg2 << 8) | arg1
         return
+    elif opcode == 0xd5:     # PUSH D
+        state.memory[state.sp - 1] = state.d
+        state.memory[state.sp - 2] = state.e
+        state.sp -= 2
+    elif opcode == 0xe5:     # PUSH H
+        state.memory[state.sp - 1] = state.h
+        state.memory[state.sp - 2] = state.l
+        state.sp -= 2
     elif opcode == 0xe6:     # ANI byte
         x = state.a & arg1
         state.cc.z = ((x & 0xff) == 0)
