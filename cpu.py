@@ -48,6 +48,10 @@ def emulate(state):
         state.c = arg1
         state.b = arg2
         state.pc += 2
+    elif opcode == 0x05:     # DCR B
+        state.b = (state.b - 1) % 0xff
+        if state.b == 0:
+            state.cc.z = 1
     elif opcode == 0x06:     # MVI B byte
         state.b = arg1
         state.pc += 1
@@ -55,10 +59,31 @@ def emulate(state):
         x = state.a
         state.a = ((x & 1) << 7) | (x >> 1)
         state.cc.cy = (x & 1) == 1
+    elif opcode == 0x11:
+        state.d = arg2
+        state.e = arg1
+        state.pc += 2
+    elif opcode == 0x13:
+        n = (state.d << 8) | state.e
+        n = (n + 1) % 0xffff
+        state.d = n >> 8
+        state.e = n & 0xff
+    elif opcode == 0x1a:     # LDAX D
+        adr = (state.d << 8) | state.e
+        state.a = state.memory[adr]
     elif opcode == 0x1f:     # RAR / Division
         x = state.a
         state.a = (state.cc.cy << 7) | (x >> 1)
         state.cc.cy = (x & 1) == 1
+    elif opcode == 0x21:     # LXI H, word
+        state.h = arg2
+        state.l = arg1
+        state.pc += 2
+    elif opcode == 0x23:     # INX H
+        n = (state.h << 8) | state.l
+        n = (n + 1) % 0xffff
+        state.h = n >> 8
+        state.l = n & 0xff
     elif opcode == 0x2f:     # CMA
         # python's ~ operator uses signed not, we want unsigned not
         state.a = state.a ^ 0xff
@@ -71,6 +96,9 @@ def emulate(state):
         state.b = state.d
     elif opcode == 0x43:
         state.b = state.e
+    elif opcode == 0x77:      # MOV M, A
+        adr = (state.h << 8) | state.l
+        state.memory[adr] = state.a
     elif opcode == 0x80:     # ADD B
         ans = int(state.a) + int(state.b)
         # set zero flag if ans is 0
