@@ -57,6 +57,13 @@ def emulate(state):
     elif opcode == 0x06:     # MVI B byte
         state.b = arg1
         state.pc += 1
+    elif opcode == 0x09:     # DAD B
+        hl = (state.h << 8) | state.l
+        bc = (state.b << 8) | state.c
+        ans = hl + bc
+        state.cc.cy = ans > 0xffff
+        state.h = (ans & 0xffff) >> 8
+        state.l = ans & 0xff
     elif opcode == 0x0e:     # MVI C byte
         state.c = arg1
         state.pc += 1
@@ -166,6 +173,7 @@ def emulate(state):
     elif opcode == 0xc2:     # JNZ adr
         if state.cc.z == 0:
             state.pc = (arg2 << 8) | arg1
+            return
         else:
             state.pc += 2
     elif opcode == 0xc3:     # JMP adr
@@ -201,6 +209,7 @@ def emulate(state):
     elif opcode == 0xd3:     # OUT byte
         # palceholder while I discover what the device is supposed to do
         devices[arg1] = state.a
+        state.pc += 1
     elif opcode == 0xd5:     # PUSH D
         state.memory[state.sp - 1] = state.d
         state.memory[state.sp - 2] = state.e
