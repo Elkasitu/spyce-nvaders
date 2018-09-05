@@ -165,7 +165,7 @@ def emulate(state):
         adr = (state.h << 8) | state.l
         state.a = state.memory[adr]
     elif opcode == 0x80:     # ADD B
-        ans = int(state.a) + int(state.b)
+        ans = state.a + state.b
         # set zero flag if ans is 0
         # 0x00 & 0xff = 0x00 True
         # 0x10 & 0xff = 0x10 False
@@ -181,7 +181,7 @@ def emulate(state):
         # store 2 bytes of the result into register a
         state.a = ans & 0xff
     elif opcode == 0x81:     # ADD C
-        ans = int(state.a) + int(state.c)
+        ans = state.a + state.c
         state.cc.z = ((ans & 0xff) == 0)
         state.cc.s = ((ans & 0x80) != 0)
         state.cc.cy = ans > 0xff
@@ -190,12 +190,26 @@ def emulate(state):
     elif opcode == 0x86:     # ADD M
         # shift eight bits left to concatenate H & L
         adr = (state.h << 8) | state.l
-        ans = int(state.a) + int(state.memory[adr])
+        ans = state.a + state.memory[adr]
         state.cc.z = ((ans & 0xff) == 0)
         state.cc.s = ((ans & 0x80) != 0)
         state.cc.cy = ans > 0xff
         state.cc.p = parity(ans & 0xff)
         state.a = ans & 0xff
+    elif opcode == 0xa7:     # ANA A
+        ans = state.a & state.a
+        state.cc.z = ans == 0
+        state.cc.s = (ans & 0x80) != 0
+        state.cc.cy = 0
+        state.cc.p = parity(ans)
+        state.a = ans
+    elif opcode == 0xaf:     # XRA A
+        ans = state.a ^ state.a
+        state.cc.z = ans == 0
+        state.cc.s = (ans & 0x80) != 0
+        state.cc.cy = 0
+        state.cc.p = parity(ans)
+        state.a = ans
     elif opcode == 0xc1:     # POP B
         state.c = state.memory[state.sp]
         state.b = state.memory[state.sp + 1]
@@ -214,7 +228,7 @@ def emulate(state):
         state.memory[state.sp - 2] = state.c
         state.sp -= 2
     elif opcode == 0xc6:     # ADI byte
-        ans = int(state.a) + int(arg1)
+        ans = state.a + arg1
         state.cc.z = ((ans & 0xff) == 0)
         state.cc.s = ((ans & 0x80) != 0)
         state.cc.cy = ans > 0xff
@@ -286,6 +300,8 @@ def emulate(state):
         psw |= state.cc.ac << 4
         state.memory[state.sp - 2] = psw
         state.sp -= 2
+    elif opcode == 0xfb:     # EI
+        state.int_enable = 1
     elif opcode == 0xfe:     # CPI byte
         x = state.a - arg1
         state.cc.z = (x & 0xff) == 0
