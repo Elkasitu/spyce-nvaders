@@ -64,6 +64,9 @@ def emulate(state):
         state.cc.cy = ans > 0xffff
         state.h = (ans & 0xffff) >> 8
         state.l = ans & 0xff
+    elif opcode == 0x0d:     # DCR C
+        state.c = (state.c - 1) % 0xff
+        state.cc.z = state.c == 0
     elif opcode == 0x0e:     # MVI C byte
         state.c = arg1
         state.pc += 1
@@ -118,22 +121,49 @@ def emulate(state):
     elif opcode == 0x31:     # LXI SP
         state.sp = (arg2 << 8) | arg1
         state.pc += 2
+    elif opcode == 0x32:     # STA adr
+        adr = (arg2 << 8) | arg1
+        state.memory[adr] = state.a
+        state.pc += 2
     elif opcode == 0x36:     # MVI M byte
         adr = (state.h << 8) | state.l
         state.memory[adr] = arg1
+    elif opcode == 0x3a:     # LDA adr
+        adr = (arg2 << 8) | arg1
+        state.a = state.memory[adr]
+        state.pc += 2
+    elif opcode == 0x3e:     # MVI A byte
+        state.a = arg1
+        state.pc += 1
     elif opcode == 0x41:
         state.b = state.c
     elif opcode == 0x42:
         state.b = state.d
     elif opcode == 0x43:
         state.b = state.e
+    elif opcode == 0x56:      # MOV D, M
+        adr = (state.h << 8) | state.l
+        state.d = state.memory[adr]
+    elif opcode == 0x5e:      # MOV E, M
+        adr = (state.h << 8) | state.l
+        state.e = state.memory[adr]
+    elif opcode == 0x66:      # MOV H, M
+        adr = (state.h << 8) | state.l
+        state.h = state.memory[adr]
     elif opcode == 0x6f:      # MOV L, A
         state.l = state.a
     elif opcode == 0x77:      # MOV M, A
         adr = (state.h << 8) | state.l
         state.memory[adr] = state.a
+    elif opcode == 0x7a:      # MOV A, D
+        state.a = state.d
+    elif opcode == 0x7b:      # MOV A, E
+        state.a = state.e
     elif opcode == 0x7c:     # MOV A, H
         state.a = state.h
+    elif opcode == 0x7e:     # MOV A, M
+        adr = (state.h << 8) | state.l
+        state.a = state.memory[adr]
     elif opcode == 0x80:     # ADD B
         ans = int(state.a) + int(state.b)
         # set zero flag if ans is 0
@@ -206,6 +236,10 @@ def emulate(state):
         state.sp -= 2
         state.pc = (arg2 << 8) | arg1
         return
+    elif opcode == 0xd1:     # POP D
+        state.e = state.memory[state.sp]
+        state.d = state.memory[state.sp + 1]
+        state.sp += 2
     elif opcode == 0xd3:     # OUT byte
         # palceholder while I discover what the device is supposed to do
         devices[arg1] = state.a
@@ -269,8 +303,11 @@ def main():
     with open('invaders', 'rb') as f:
         state = State(f.read())
 
+    count = 1
     while 1:
         emulate(state)
+        print("Instruction count: %d" % count)
+        count += 1
 
 
 if __name__ == '__main__':
