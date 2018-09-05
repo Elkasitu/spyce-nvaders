@@ -29,6 +29,9 @@ class State:
         self.int_enable = 0
 
 
+devices = {}
+
+
 def emulate(state):
 
     def parity(n):
@@ -50,8 +53,7 @@ def emulate(state):
         state.pc += 2
     elif opcode == 0x05:     # DCR B
         state.b = (state.b - 1) % 0xff
-        if state.b == 0:
-            state.cc.z = 1
+        state.cc.z = state.b == 0
     elif opcode == 0x06:     # MVI B byte
         state.b = arg1
         state.pc += 1
@@ -196,10 +198,17 @@ def emulate(state):
         state.sp -= 2
         state.pc = (arg2 << 8) | arg1
         return
+    elif opcode == 0xd3:     # OUT byte
+        # palceholder while I discover what the device is supposed to do
+        devices[arg1] = state.a
     elif opcode == 0xd5:     # PUSH D
         state.memory[state.sp - 1] = state.d
         state.memory[state.sp - 2] = state.e
         state.sp -= 2
+    elif opcode == 0xe1:     # POP H
+        state.l = state.memory[state.sp]
+        state.h = state.memory[state.sp + 1]
+        state.sp += 2
     elif opcode == 0xe5:     # PUSH H
         state.memory[state.sp - 1] = state.h
         state.memory[state.sp - 2] = state.l
@@ -212,6 +221,9 @@ def emulate(state):
         state.cc.p = parity(x & 0xff)
         state.a = x
         state.pc += 1
+    elif opcode == 0xeb:     # XCHG
+        state.h, state.d = state.d, state.h
+        state.l, state.e = state.e, state.l
     elif opcode == 0xf1:     # POP PSW
         state.a = state.memory[state.sp + 1]
         psw = state.memory[state.sp]
@@ -233,7 +245,7 @@ def emulate(state):
         state.sp -= 2
     elif opcode == 0xfe:     # CPI byte
         x = state.a - arg1
-        state.cc.z = x == 0
+        state.cc.z = (x & 0xff) == 0
         state.cc.s = (x & 0x80) != 0
         state.cc.p = parity(x & 0xff)
         state.cc.cy = state.a < arg1
