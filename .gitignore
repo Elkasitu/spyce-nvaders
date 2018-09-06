@@ -4,3 +4,4 @@
 *.h
 invaders
 __pycache__
+*.bin
