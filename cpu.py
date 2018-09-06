@@ -1,3 +1,5 @@
+import argparse
+
 from disassembler import disassemble
 
 
@@ -84,16 +86,17 @@ class State:
 devices = {}
 
 
-def emulate(state):
-
+def emulate(state, debug=0):
 
     opcode, arg1, arg2 = state.memory[state.pc:state.pc + 3]
 
-    disassemble(state.memory, state.pc)
-    print("\tC=%d, P=%d, S=%d, Z=%d\n" % (state.cc.cy, state.cc.p, state.cc.s, state.cc.z))
-    print("\tA %02x B %02x C %02x D %02x E %02x H %02x L %02x SP %04x\n" % (
-        state.a, state.b, state.c, state.d, state.e, state.h, state.l, state.sp
-    ))
+    if debug:
+        disassemble(state.memory, state.pc)
+    if debug > 1:
+        print("\tC=%d, P=%d, S=%d, Z=%d\n" % (state.cc.cy, state.cc.p, state.cc.s, state.cc.z))
+        print("\tA %02x B %02x C %02x D %02x E %02x H %02x L %02x SP %04x\n" % (
+            state.a, state.b, state.c, state.d, state.e, state.h, state.l, state.sp
+        ))
 
     if opcode == 0x00:
         pass
@@ -343,15 +346,28 @@ def emulate(state):
     state.pc += 1
 
 
+def parse():
+    parser = argparse.ArgumentParser(
+        description="Emulate programs for the Intel 8080 processor"
+    )
+    parser.add_argument('-d', '--debug', action='count', default=0,
+                        help="Display debug output, can be specified up to 3 times")
+    parser.add_argument('bin', nargs=1, help="Program to execute")
+    return parser.parse_args()
+
+
 def main():
-    with open('invaders', 'rb') as f:
+    args = parse()
+
+    with open(args.bin[0], 'rb') as f:
         state = State(f.read())
 
     count = 1
     while 1:
-        emulate(state)
-        print("Instruction count: %d" % count)
-        count += 1
+        emulate(state, args.debug)
+        if args.debug == 3:
+            print("Instruction count: %d" % count)
+            count += 1
 
 
 if __name__ == '__main__':
