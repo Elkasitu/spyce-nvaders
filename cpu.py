@@ -1,6 +1,34 @@
 from disassembler import disassemble
 
 
+def merge_bytes(high, low):
+    """
+    Merges two separate bytes to create an address
+
+    e.g.:
+        param high is 0x3E
+        param low is 0xFF
+        resulting address will be 0x3EFF
+    """
+    return (high << 8) | low
+
+
+def extract_bytes(adr):
+    """
+    Splits an address into two words
+
+    e.g.:
+        param adr is 0x3EFF
+        resulting values are 0x3E (high) and 0xFF (low)
+    """
+    return (adr >> 8) & 0xff, adr & 0xff
+
+
+def parity(n):
+    """ Sets the parity bit for the Flags construct """
+    return n % 2 == 0
+
+
 class Flags:
 
     def __init__(self):
@@ -17,6 +45,7 @@ class State:
     def __init__(self, memory):
         self.memory = bytearray(memory) + bytearray(0x2000)  # ROM + RAM
         self.a = 0
+        self.cc = Flags()
         self.b = 0
         self.c = 0
         self.d = 0
@@ -25,8 +54,31 @@ class State:
         self.l = 0
         self.sp = 0
         self.pc = 0
-        self.cc = Flags()
         self.int_enable = 0
+
+    @property
+    def bc(self):
+        return merge_bytes(self.b, self.c)
+
+    @bc.setter
+    def bc(self, val):
+        self.b, self.c = extract_bytes(val)
+
+    @property
+    def de(self):
+        return merge_bytes(self.d, self.e)
+
+    @de.setter
+    def de(self, val):
+        self.d, self.e = extract_bytes(val)
+
+    @property
+    def hl(self):
+        return merge_bytes(self.h, self.l)
+
+    @hl.setter
+    def hl(self, val):
+        self.h, self.l = extract_bytes(val)
 
 
 devices = {}
@@ -34,8 +86,6 @@ devices = {}
 
 def emulate(state):
 
-    def parity(n):
-        return n % 2 == 0
 
     opcode, arg1, arg2 = state.memory[state.pc:state.pc + 3]
 
@@ -58,12 +108,9 @@ def emulate(state):
         state.b = arg1
         state.pc += 1
     elif opcode == 0x09:     # DAD B
-        hl = (state.h << 8) | state.l
-        bc = (state.b << 8) | state.c
-        ans = hl + bc
+        ans = state.hl + state.bc
         state.cc.cy = ans > 0xffff
-        state.h = (ans & 0xffff) >> 8
-        state.l = ans & 0xff
+        state.hl = ans
     elif opcode == 0x0d:     # DCR C
         state.c = (state.c - 1) % 0xff
         state.cc.z = state.c == 0
@@ -79,20 +126,14 @@ def emulate(state):
         state.e = arg1
         state.pc += 2
     elif opcode == 0x13:
-        n = (state.d << 8) | state.e
-        n = (n + 1) % 0xffff
-        state.d = n >> 8
-        state.e = n & 0xff
+        n = (state.de + 1) % 0xffff
+        state.de = n
     elif opcode == 0x19:     # DAD D
-        ans1 = (state.d << 8) | state.e
-        ans2 = (state.h << 8) | state.l
-        ans = ans1 + ans2
+        ans = state.de + state.hl
         state.cc.cy = ans > 0xffff
-        state.h = (ans & 0xffff) >> 8
-        state.l = ans & 0xff
+        state.hl = ans
     elif opcode == 0x1a:     # LDAX D
-        adr = (state.d << 8) | state.e
-        state.a = state.memory[adr]
+        state.a = state.memory[state.de]
     elif opcode == 0x1f:     # RAR / Division
         x = state.a
         state.a = (state.cc.cy << 7) | (x >> 1)
@@ -102,34 +143,29 @@ def emulate(state):
         state.l = arg1
         state.pc += 2
     elif opcode == 0x23:     # INX H
-        n = (state.h << 8) | state.l
-        n = (n + 1) % 0xffff
-        state.h = n >> 8
-        state.l = n & 0xff
+        n = (state.hl + 1) % 0xffff
+        state.hl = n
     elif opcode == 0x26:     # MVI H
         state.h = arg1
         state.pc += 1
     elif opcode == 0x29:     # DAD H
-        ans = (state.h << 8) | state.l
-        ans <<= 1
+        ans = state.hl << 1
         state.cc.cy = ans > 0xffff
-        state.h = (ans & 0xffff) >> 8
-        state.l = ans & 0xff
+        state.hl = ans
     elif opcode == 0x2f:     # CMA
         # python's ~ operator uses signed not, we want unsigned not
-        state.a = state.a ^ 0xff
+        state.a ^= 0xff
     elif opcode == 0x31:     # LXI SP
-        state.sp = (arg2 << 8) | arg1
+        state.sp = merge_bytes(arg2, arg1)
         state.pc += 2
     elif opcode == 0x32:     # STA adr
-        adr = (arg2 << 8) | arg1
+        adr = merge_bytes(arg2, arg1)
         state.memory[adr] = state.a
         state.pc += 2
     elif opcode == 0x36:     # MVI M byte
-        adr = (state.h << 8) | state.l
-        state.memory[adr] = arg1
+        state.memory[state.hl] = arg1
     elif opcode == 0x3a:     # LDA adr
-        adr = (arg2 << 8) | arg1
+        adr = merge_bytes(arg2, arg1)
         state.a = state.memory[adr]
         state.pc += 2
     elif opcode == 0x3e:     # MVI A byte
@@ -142,19 +178,15 @@ def emulate(state):
     elif opcode == 0x43:
         state.b = state.e
     elif opcode == 0x56:      # MOV D, M
-        adr = (state.h << 8) | state.l
-        state.d = state.memory[adr]
+        state.d = state.memory[state.hl]
     elif opcode == 0x5e:      # MOV E, M
-        adr = (state.h << 8) | state.l
-        state.e = state.memory[adr]
+        state.e = state.memory[state.hl]
     elif opcode == 0x66:      # MOV H, M
-        adr = (state.h << 8) | state.l
-        state.h = state.memory[adr]
+        state.h = state.memory[state.hl]
     elif opcode == 0x6f:      # MOV L, A
         state.l = state.a
     elif opcode == 0x77:      # MOV M, A
-        adr = (state.h << 8) | state.l
-        state.memory[adr] = state.a
+        state.memory[state.hl] = state.a
     elif opcode == 0x7a:      # MOV A, D
         state.a = state.d
     elif opcode == 0x7b:      # MOV A, E
@@ -162,8 +194,7 @@ def emulate(state):
     elif opcode == 0x7c:     # MOV A, H
         state.a = state.h
     elif opcode == 0x7e:     # MOV A, M
-        adr = (state.h << 8) | state.l
-        state.a = state.memory[adr]
+        state.a = state.memory[state.hl]
     elif opcode == 0x80:     # ADD B
         ans = state.a + state.b
         # set zero flag if ans is 0
@@ -178,7 +209,7 @@ def emulate(state):
         state.cc.cy = ans > 0xff
         # set parity, ans % 2 == 0: True, else False
         state.cc.p = parity(ans & 0xff)
-        # store 2 bytes of the result into register a
+        # store a byte of the result into register a
         state.a = ans & 0xff
     elif opcode == 0x81:     # ADD C
         ans = state.a + state.c
@@ -188,9 +219,7 @@ def emulate(state):
         state.cc.p = parity(ans & 0xff)
         state.a = ans & 0xff
     elif opcode == 0x86:     # ADD M
-        # shift eight bits left to concatenate H & L
-        adr = (state.h << 8) | state.l
-        ans = state.a + state.memory[adr]
+        ans = state.a + state.memory[state.hl]
         state.cc.z = ((ans & 0xff) == 0)
         state.cc.s = ((ans & 0x80) != 0)
         state.cc.cy = ans > 0xff
@@ -216,12 +245,12 @@ def emulate(state):
         state.sp += 2
     elif opcode == 0xc2:     # JNZ adr
         if state.cc.z == 0:
-            state.pc = (arg2 << 8) | arg1
+            state.pc = merge_bytes(arg2, arg1)
             return
         else:
             state.pc += 2
     elif opcode == 0xc3:     # JMP adr
-        state.pc = (arg2 << 8) | arg1
+        state.pc = merge_bytes(arg2, arg1)
         return
     elif opcode == 0xc5:     # PUSH B
         state.memory[state.sp - 1] = state.b
@@ -237,18 +266,18 @@ def emulate(state):
         state.pc += 1
     elif opcode == 0xc9:     # RET
         # set pc to ret adr
-        state.pc = state.memory[state.sp] | (state.memory[state.sp + 1] << 8)
+        state.pc = merge_bytes(state.memory[state.sp + 1], state.memory[state.sp])
         # restore stack pointer
         state.sp += 2
     elif opcode == 0xcd:     # CALL adr
-        # return address
+        # put the return address on the stack first
         ret = state.pc + 2
-        # put high part of ret in pos -1 of the stack
-        state.memory[state.sp - 1] = (ret >> 8) & 0xff
-        # put low part of ret in pos -2 of the stack
-        state.memory[state.sp - 2] = ret & 0xff
+        hi, lo = extract_bytes(ret)
+        state.memory[state.sp - 1] = hi
+        state.memory[state.sp - 2] = lo
         state.sp -= 2
-        state.pc = (arg2 << 8) | arg1
+        # then go to adr
+        state.pc = merge_bytes(arg2, arg1)
         return
     elif opcode == 0xd1:     # POP D
         state.e = state.memory[state.sp]
@@ -279,8 +308,7 @@ def emulate(state):
         state.a = x
         state.pc += 1
     elif opcode == 0xeb:     # XCHG
-        state.h, state.d = state.d, state.h
-        state.l, state.e = state.e, state.l
+        state.hl, state.de = state.de, state.hl
     elif opcode == 0xf1:     # POP PSW
         state.a = state.memory[state.sp + 1]
         psw = state.memory[state.sp]
