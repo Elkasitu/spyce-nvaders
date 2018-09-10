@@ -78,6 +78,10 @@ class State:
         setattr(self, reg, merge_bytes(self.memory[self.sp + 1], self.memory[self.sp]))
         self.sp += 2
 
+    def lxi(self, reg, high, low):
+        setattr(self, reg, merge_bytes(high, low))
+        self.pc += 2
+
     @property
     def cc(self):
         return self._cc
@@ -128,6 +132,7 @@ devices = {}
 
 def emulate(state, debug=0):
 
+    # XXX: You *really* don't wanna reach the end of the memory
     opcode, arg1, arg2 = state.memory[state.pc:state.pc + 3]
 
     if debug:
@@ -143,9 +148,7 @@ def emulate(state, debug=0):
         pass
     elif opcode == 0x01:
         # LXI B, D16
-        state.c = arg1
-        state.b = arg2
-        state.pc += 2
+        state.lxi('bc', arg2, arg1)
     elif opcode == 0x05:
         # DCR B
         state.b = (state.b - 1) % 0xff
@@ -174,9 +177,7 @@ def emulate(state, debug=0):
         state.cc.cy = (x & 1) == 1
     elif opcode == 0x11:
         # LXI D, D16
-        state.d = arg2
-        state.e = arg1
-        state.pc += 2
+        state.lxi('de', arg2, arg1)
     elif opcode == 0x13:
         # INX D
         n = (state.de + 1) % 0xffff
@@ -196,8 +197,7 @@ def emulate(state, debug=0):
         state.cc.cy = (x & 1) == 1
     elif opcode == 0x21:
         # LXI H, D16
-        state.hl = merge_bytes(arg2, arg1)
-        state.pc += 2
+        state.lxi('hl', arg2, arg1)
     elif opcode == 0x23:
         # INX H
         n = (state.hl + 1) % 0xffff
@@ -217,8 +217,7 @@ def emulate(state, debug=0):
         state.a ^= 0xff
     elif opcode == 0x31:
         # LXI SP, D16
-        state.sp = merge_bytes(arg2, arg1)
-        state.pc += 2
+        state.lxi('sp', arg2, arg1)
     elif opcode == 0x32:
         # STA adr
         adr = merge_bytes(arg2, arg1)
