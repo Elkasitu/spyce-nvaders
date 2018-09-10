@@ -39,7 +39,9 @@ class Flags:
         self.p = 0
         self.cy = 0
         self.ac = 0
-        self._pad = 3
+
+    def __int__(self):
+        return self.z | (self.s << 1) | (self.p << 2) | (self.cy << 3) | (self.ac << 4)
 
 
 class State:
@@ -47,7 +49,7 @@ class State:
     def __init__(self, memory):
         self.memory = bytearray(memory) + bytearray(0x2000)  # ROM + RAM
         self.a = 0
-        self.cc = Flags()
+        self._cc = Flags()
         self.b = 0
         self.c = 0
         self.d = 0
@@ -57,6 +59,44 @@ class State:
         self.sp = 0
         self.pc = 0
         self.int_enable = 0
+
+    def push(self, reg):
+        """
+        Push a register pair onto the stack.
+        """
+        assert reg in 'bc de hl psw', "Register %s is not valid" % reg
+
+        self.memory[self.sp - 1], self.memory[self.sp - 2] = extract_bytes(getattr(self, reg))
+        self.sp -= 2
+
+    def pop(self, reg):
+        """
+        Pop a value from the stack into a register pair.
+        """
+        assert reg in 'bc de hl psw', "Register %s is not valid" % reg
+
+        setattr(self, reg, merge_bytes(self.memory[self.sp + 1], self.memory[self.sp]))
+        self.sp += 2
+
+    @property
+    def cc(self):
+        return self._cc
+
+    @cc.setter
+    def cc(self, val):
+        self._cc.z = (0x01 == (val & 0x01))
+        self._cc.s = (0x02 == (val & 0x02))
+        self._cc.p = (0x04 == (val & 0x04))
+        self._cc.cy = (0x08 == (val & 0x08))
+        self._cc.ac = (0x10 == (val & 0x10))
+
+    @property
+    def psw(self):
+        return merge_bytes(self.a, int(self.cc))
+
+    @psw.setter
+    def psw(self, val):
+        self.a, self.cc = extract_bytes(val)
 
     @property
     def bc(self):
@@ -283,9 +323,7 @@ def emulate(state, debug=0):
         state.a = ans
     elif opcode == 0xc1:
         # POP B
-        state.c = state.memory[state.sp]
-        state.b = state.memory[state.sp + 1]
-        state.sp += 2
+        state.pop('bc')
     elif opcode == 0xc2:
         # JNZ adr
         if state.cc.z == 0:
@@ -299,9 +337,7 @@ def emulate(state, debug=0):
         return
     elif opcode == 0xc5:
         # PUSH B
-        state.memory[state.sp - 1] = state.b
-        state.memory[state.sp - 2] = state.c
-        state.sp -= 2
+        state.push('bc')
     elif opcode == 0xc6:
         # ADI byte
         ans = state.a + arg1
@@ -330,9 +366,7 @@ def emulate(state, debug=0):
         return
     elif opcode == 0xd1:
         # POP D
-        state.e = state.memory[state.sp]
-        state.d = state.memory[state.sp + 1]
-        state.sp += 2
+        state.pop('de')
     elif opcode == 0xd3:
         # OUT byte
         # palceholder while I discover what the device is supposed to do
@@ -340,18 +374,13 @@ def emulate(state, debug=0):
         state.pc += 1
     elif opcode == 0xd5:
         # PUSH D
-        state.memory[state.sp - 1] = state.d
-        state.memory[state.sp - 2] = state.e
-        state.sp -= 2
+        state.push('de')
     elif opcode == 0xe1:
         # POP H
-        state.hl = merge_bytes(state.memory[state.sp + 1], state.memory[state.sp])
-        state.sp += 2
+        state.pop('hl')
     elif opcode == 0xe5:
         # PUSH H
-        state.memory[state.sp - 1] = state.h
-        state.memory[state.sp - 2] = state.l
-        state.sp -= 2
+        state.push('hl')
     elif opcode == 0xe6:
         # ANI byte
         x = state.a & arg1
@@ -366,25 +395,10 @@ def emulate(state, debug=0):
         state.hl, state.de = state.de, state.hl
     elif opcode == 0xf1:
         # POP PSW
-        state.a = state.memory[state.sp + 1]
-        psw = state.memory[state.sp]
-        # copy each meaningful bit from psw to state
-        state.cc.z = (0x01 == (psw & 0x01))
-        state.cc.s = (0x02 == (psw & 0x02))
-        state.cc.p = (0x04 == (psw & 0x04))
-        state.cc.cy = (0x08 == (psw & 0x08))
-        state.cc.ac = (0x10 == (psw & 0x10))
-        state.sp += 2
+        state.pop('psw')
     elif opcode == 0xf5:
         # PUSH PSW
-        state.memory[state.sp - 1] = state.a
-        psw = state.cc.z
-        psw |= state.cc.s << 1
-        psw |= state.cc.p << 2
-        psw |= state.cc.cy << 3
-        psw |= state.cc.ac << 4
-        state.memory[state.sp - 2] = psw
-        state.sp -= 2
+        state.push('psw')
     elif opcode == 0xfb:
         # EI
         state.int_enable = 1
