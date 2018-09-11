@@ -105,10 +105,44 @@ class State:
         Arguments:
             reg (str): register name [a|b|c|d|e|h|l|m]
         """
-        assert reg in 'bc de hl psw sp'.split(), "Register %s is not valid" % reg
+        assert reg in 'b c d e h l m a'.split(), "Register %s is not valid" % reg
 
-        setattr(self, reg, (getattr(self, reg) - 1) % 0xff)
-        self.cc.z = getattr(self, reg) == 0
+        if reg == 'm':
+            ans = self.memory[self.hl] - 1
+        else:
+            ans = getattr(self, reg) - 1
+
+        self.cc.z = (ans & 0xff) == 0
+        self.cc.s = (ans & 0x80) != 0
+        self.cc.cy = ans > 0xff
+        self.cc.p = parity(ans & 0xff)
+
+        if reg == 'm':
+            self.memory[self.hl] = ans & 0xff
+        else:
+            setattr(self, reg, ans & 0xff)
+
+    def mvi(self, reg, val):
+        if reg == 'm':
+            self.memory[self.hl] = val
+        else:
+            setattr(self, reg, val)
+        self.pc += 1
+
+    def dad(self, reg):
+        ans = self.hl + getattr(self, reg)
+        self.cc.cy = ans > 0xffff
+        self.hl = ans
+
+    def inx(self, reg):
+        ans = getattr(self, reg) + 1
+
+        self.cc.z = (ans & 0xffff) == 0
+        self.cc.s = (ans & 0x8000) != 0
+        self.cc.cy = ans > 0xffff
+        self.cc.p = parity(ans)
+
+        setattr(self, reg, ans & 0xffff)
 
     @property
     def cc(self):
@@ -182,20 +216,16 @@ def emulate(state, debug=0):
         state.dcr('b')
     elif opcode == 0x06:
         # MVI B, D8
-        state.b = arg1
-        state.pc += 1
+        state.mvi('b', arg1)
     elif opcode == 0x09:
         # DAD B
-        ans = state.hl + state.bc
-        state.cc.cy = ans > 0xffff
-        state.hl = ans
+        state.dad('bc')
     elif opcode == 0x0d:
         # DCR C
         state.dcr('c')
     elif opcode == 0x0e:
         # MVI C, D8
-        state.c = arg1
-        state.pc += 1
+        state.mvi('c', arg1)
     elif opcode == 0x0f:
         # RRC
         x = state.a
@@ -206,13 +236,10 @@ def emulate(state, debug=0):
         state.lxi('de', arg2, arg1)
     elif opcode == 0x13:
         # INX D
-        n = (state.de + 1) % 0xffff
-        state.de = n
+        state.inx('de')
     elif opcode == 0x19:
         # DAD D
-        ans = state.de + state.hl
-        state.cc.cy = ans > 0xffff
-        state.hl = ans
+        state.dad('de')
     elif opcode == 0x1a:
         # LDAX D
         state.a = state.memory[state.de]
@@ -226,17 +253,13 @@ def emulate(state, debug=0):
         state.lxi('hl', arg2, arg1)
     elif opcode == 0x23:
         # INX H
-        n = (state.hl + 1) % 0xffff
-        state.hl = n
+        state.inx('hl')
     elif opcode == 0x26:
         # MVI H, D8
-        state.h = arg1
-        state.pc += 1
+        state.mvi('h', arg1)
     elif opcode == 0x29:
         # DAD H
-        ans = state.hl << 1
-        state.cc.cy = ans > 0xffff
-        state.hl = ans
+        state.dad('hl')
     elif opcode == 0x2f:
         # CMA
         # python's ~ operator uses signed not, we want unsigned not
@@ -250,8 +273,8 @@ def emulate(state, debug=0):
         state.memory[adr] = state.a
         state.pc += 2
     elif opcode == 0x36:
-        # MVI M, D16
-        state.memory[state.hl] = arg1
+        # MVI M, D8
+        state.mvi('m', arg1)
     elif opcode == 0x3a:
         # LDA adr
         adr = merge_bytes(arg2, arg1)
@@ -259,8 +282,7 @@ def emulate(state, debug=0):
         state.pc += 2
     elif opcode == 0x3e:
         # MVI A, D8
-        state.a = arg1
-        state.pc += 1
+        state.mvi('a', arg1)
     elif opcode == 0x41:
         # MOV B, C
         state.b = state.c
@@ -346,6 +368,14 @@ def emulate(state, debug=0):
         state.cc.cy = 0
         state.cc.p = parity(ans)
         state.a = ans
+    elif opcode == 0xb3:
+        # ORA E
+        ans = state.a | state.e
+        state.cc.z = ans == 0
+        state.cc.s = (ans & 0x80) != 0
+        state.cc.cy = ans > 0xff
+        state.cc.p = parity(ans)
+        state.a = ans
     elif opcode == 0xc1:
         # POP B
         state.pop('bc')
@@ -378,6 +408,10 @@ def emulate(state, debug=0):
         state.pc = merge_bytes(state.memory[state.sp + 1], state.memory[state.sp])
         # restore stack pointer
         state.sp += 2
+    elif opcode == 0xca:
+        # JZ
+        if state.cc.z:
+            state.pc = merge_bytes(arg2, arg1)
     elif opcode == 0xcd:
         # CALL adr
         # put the return address on the stack first
