@@ -63,8 +63,11 @@ class State:
     def push(self, reg):
         """
         Push a register pair onto the stack.
+
+        Arguments:
+            reg (str): register pair name [bc|de|hl|psw]
         """
-        assert reg in 'bc de hl psw', "Register %s is not valid" % reg
+        assert reg in 'bc de hl psw'.split(), "Register %s is not valid" % reg
 
         self.memory[self.sp - 1], self.memory[self.sp - 2] = extract_bytes(getattr(self, reg))
         self.sp -= 2
@@ -72,15 +75,40 @@ class State:
     def pop(self, reg):
         """
         Pop a value from the stack into a register pair.
+
+        Arguments:
+            reg (str): register pair name [bc|de|hl|psw]
         """
-        assert reg in 'bc de hl psw', "Register %s is not valid" % reg
+        assert reg in 'bc de hl psw'.split(), "Register %s is not valid" % reg
 
         setattr(self, reg, merge_bytes(self.memory[self.sp + 1], self.memory[self.sp]))
         self.sp += 2
 
     def lxi(self, reg, high, low):
+        """
+        Set a register pair to the specified bytes
+
+        Arguments:
+            reg (str): register pair name [bc|de|hl|psw|sp]
+            high (int): high byte
+            low (int): low byte
+        """
+        assert reg in 'bc de hl psw sp'.split(), "Register %s is not valid" % reg
+
         setattr(self, reg, merge_bytes(high, low))
         self.pc += 2
+
+    def dcr(self, reg):
+        """
+        Decrease the specified register by 1
+
+        Arguments:
+            reg (str): register name [a|b|c|d|e|h|l|m]
+        """
+        assert reg in 'bc de hl psw sp'.split(), "Register %s is not valid" % reg
+
+        setattr(self, reg, (getattr(self, reg) - 1) % 0xff)
+        self.cc.z = getattr(self, reg) == 0
 
     @property
     def cc(self):
@@ -151,8 +179,7 @@ def emulate(state, debug=0):
         state.lxi('bc', arg2, arg1)
     elif opcode == 0x05:
         # DCR B
-        state.b = (state.b - 1) % 0xff
-        state.cc.z = state.b == 0
+        state.dcr('b')
     elif opcode == 0x06:
         # MVI B, D8
         state.b = arg1
@@ -164,8 +191,7 @@ def emulate(state, debug=0):
         state.hl = ans
     elif opcode == 0x0d:
         # DCR C
-        state.c = (state.c - 1) % 0xff
-        state.cc.z = state.c == 0
+        state.dcr('c')
     elif opcode == 0x0e:
         # MVI C, D8
         state.c = arg1
