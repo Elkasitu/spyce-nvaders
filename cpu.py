@@ -60,6 +60,13 @@ class State:
         self.pc = 0
         self.int_enable = 0
 
+    def calc_flags(self, ans, single=True):
+        mask = 0xff if single else 0xffff
+        self.cc.z = (ans & mask) == 0
+        self.cc.s = (ans & (mask - (mask >> 1))) != 0
+        self.cc.cy = ans > mask
+        self.cc.p = parity(ans & mask)
+
     def push(self, reg):
         """
         Push a register pair onto the stack.
@@ -112,10 +119,7 @@ class State:
         else:
             ans = getattr(self, reg) - 1
 
-        self.cc.z = (ans & 0xff) == 0
-        self.cc.s = (ans & 0x80) != 0
-        self.cc.cy = ans > 0xff
-        self.cc.p = parity(ans & 0xff)
+        self.calc_flags(ans)
 
         if reg == 'm':
             self.memory[self.hl] = ans & 0xff
@@ -136,13 +140,31 @@ class State:
 
     def inx(self, reg):
         ans = getattr(self, reg) + 1
-
-        self.cc.z = (ans & 0xffff) == 0
-        self.cc.s = (ans & 0x8000) != 0
-        self.cc.cy = ans > 0xffff
-        self.cc.p = parity(ans)
-
+        self.calc_flags(ans, False)
         setattr(self, reg, ans & 0xffff)
+
+    def add(self, reg):
+        if reg == 'm':
+            ans = self.a + self.memory[self.hl]
+        else:
+            ans = self.a + getattr(self, reg)
+        self.calc_flags(ans)
+        self.a = ans & 0xff
+
+    def ana(self, reg):
+        ans = self.a & getattr(self, reg)
+        self.calc_flags(ans)
+        self.a = ans & 0xff
+
+    def ora(self, reg):
+        ans = self.a | getattr(self, reg)
+        self.calc_flags(ans)
+        self.a = ans & 0xff
+
+    def xra(self, reg):
+        ans = self.a ^ getattr(self, reg)
+        self.calc_flags(ans)
+        self.a = ans & 0xff
 
     @property
     def cc(self):
@@ -321,61 +343,22 @@ def emulate(state, debug=0):
         state.a = state.memory[state.hl]
     elif opcode == 0x80:
         # ADD B
-        ans = state.a + state.b
-        # set zero flag if ans is 0
-        # 0x00 & 0xff = 0x00 True
-        # 0x10 & 0xff = 0x10 False
-        state.cc.z = ((ans & 0xff) == 0)
-        # set sign flag if left-most bit is 1
-        # 0b0001 & 0b1000 = 0b0000 -> False
-        # 0b1001 & 0b1000 = 0b1000 -> True
-        state.cc.s = ((ans & 0x80) != 0)
-        # set carry flag if ans is greater than 0xff
-        state.cc.cy = ans > 0xff
-        # set parity, ans % 2 == 0: True, else False
-        state.cc.p = parity(ans & 0xff)
-        # store a byte of the result into register a
-        state.a = ans & 0xff
+        state.add('b')
     elif opcode == 0x81:
         # ADD C
-        ans = state.a + state.c
-        state.cc.z = ((ans & 0xff) == 0)
-        state.cc.s = ((ans & 0x80) != 0)
-        state.cc.cy = ans > 0xff
-        state.cc.p = parity(ans & 0xff)
-        state.a = ans & 0xff
+        state.add('c')
     elif opcode == 0x86:
         # ADD M
-        ans = state.a + state.memory[state.hl]
-        state.cc.z = ((ans & 0xff) == 0)
-        state.cc.s = ((ans & 0x80) != 0)
-        state.cc.cy = ans > 0xff
-        state.cc.p = parity(ans & 0xff)
-        state.a = ans & 0xff
+        state.add('m')
     elif opcode == 0xa7:
         # ANA A
-        ans = state.a & state.a
-        state.cc.z = ans == 0
-        state.cc.s = (ans & 0x80) != 0
-        state.cc.cy = 0
-        state.cc.p = parity(ans)
-        state.a = ans
+        state.ana('a')
     elif opcode == 0xaf:
         # XRA A
-        ans = state.a ^ state.a
-        state.cc.z = ans == 0
-        state.cc.s = (ans & 0x80) != 0
-        state.cc.cy = 0
-        state.cc.p = parity(ans)
-        state.a = ans
+        state.xra('a')
     elif opcode == 0xb3:
         # ORA E
-        ans = state.a | state.e
-        state.cc.z = ans == 0
-        state.cc.s = (ans & 0x80) != 0
-        state.cc.cy = ans > 0xff
-        state.cc.p = parity(ans)
-        state.a = ans
+        state.ora('e')
     elif opcode == 0xc1:
         # POP B
         state.pop('bc')
