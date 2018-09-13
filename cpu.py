@@ -166,6 +166,9 @@ class State:
         self.calc_flags(ans)
         self.a = ans & 0xff
 
+    def stax(self, reg):
+        self.memory[getattr(self, reg)] = self.a
+
     @property
     def cc(self):
         return self._cc
@@ -233,6 +236,9 @@ def emulate(state, debug=0):
     elif opcode == 0x01:
         # LXI B, D16
         state.lxi('bc', arg2, arg1)
+    elif opcode == 0x02:
+        # STAX B
+        state.stax('bc')
     elif opcode == 0x05:
         # DCR B
         state.dcr('b')
