@@ -1,6 +1,7 @@
 import argparse
 
 from disassembler import disassemble
+from bus import bus
 
 
 def merge_bytes(high, low):
@@ -214,9 +215,6 @@ class State:
         self.h, self.l = extract_bytes(val)
 
 
-devices = {}
-
-
 def emulate(state, debug=0):
 
     # XXX: You *really* don't wanna reach the end of the memory
@@ -417,8 +415,7 @@ def emulate(state, debug=0):
         state.pop('de')
     elif opcode == 0xd3:
         # OUT byte
-        # palceholder while I discover what the device is supposed to do
-        devices[arg1] = state.a
+        bus.write(arg1, state.a)
         state.pc += 1
     elif opcode == 0xd5:
         # PUSH D
