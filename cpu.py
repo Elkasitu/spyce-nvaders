@@ -60,6 +60,7 @@ class State:
         self.sp = 0
         self.pc = 0
         self.int_enable = 0
+        self.cycles = 0
 
     def calc_flags(self, ans, single=True):
         mask = 0xff if single else 0xffff
@@ -68,17 +69,21 @@ class State:
         self.cc.cy = ans > mask
         self.cc.p = parity(ans & mask)
 
+    def nop(self):
+        self.cycles += 4
+
     def push(self, reg):
         """
         Push a register pair onto the stack.
 
         Arguments:
-            reg (str): register pair name [bc|de|hl|psw]
+            reg (str): register pair name [bc|de|hl|psw|pc]
         """
-        assert reg in 'bc de hl psw'.split(), "Register %s is not valid" % reg
+        assert reg in 'bc de hl psw pc'.split(), "Register %s is not valid" % reg
 
         self.memory[self.sp - 1], self.memory[self.sp - 2] = extract_bytes(getattr(self, reg))
         self.sp -= 2
+        self.cycles += 11
 
     def pop(self, reg):
         """
@@ -91,6 +96,7 @@ class State:
 
         setattr(self, reg, merge_bytes(self.memory[self.sp + 1], self.memory[self.sp]))
         self.sp += 2
+        self.cycles += 10
 
     def lxi(self, reg, high, low):
         """
@@ -105,6 +111,7 @@ class State:
 
         setattr(self, reg, merge_bytes(high, low))
         self.pc += 2
+        self.cycles += 10
 
     def dcr(self, reg):
         """
@@ -124,31 +131,39 @@ class State:
 
         if reg == 'm':
             self.memory[self.hl] = ans & 0xff
+            self.cycles += 10
         else:
             setattr(self, reg, ans & 0xff)
+            self.cycles += 5
 
     def mvi(self, reg, val):
         if reg == 'm':
             self.memory[self.hl] = val
+            self.cycles += 10
         else:
             setattr(self, reg, val)
+            self.cycles += 7
         self.pc += 1
 
     def dad(self, reg):
         ans = self.hl + getattr(self, reg)
         self.cc.cy = ans > 0xffff
         self.hl = ans
+        self.cycles += 10
 
     def inx(self, reg):
         ans = getattr(self, reg) + 1
         self.calc_flags(ans, False)
         setattr(self, reg, ans & 0xffff)
+        self.cycles += 5
 
     def add(self, reg):
         if reg == 'm':
             ans = self.a + self.memory[self.hl]
+            self.cycles += 7
         else:
             ans = self.a + getattr(self, reg)
+            self.cycles += 4
         self.calc_flags(ans)
         self.a = ans & 0xff
 
@@ -157,18 +172,39 @@ class State:
         self.calc_flags(ans)
         self.a = ans & 0xff
 
+        if reg == 'm':
+            self.cycles += 7
+        else:
+            self.cycles += 4
+
     def ora(self, reg):
         ans = self.a | getattr(self, reg)
         self.calc_flags(ans)
         self.a = ans & 0xff
+
+        if reg == 'm':
+            self.cycles += 7
+        else:
+            self.cycles += 4
 
     def xra(self, reg):
         ans = self.a ^ getattr(self, reg)
         self.calc_flags(ans)
         self.a = ans & 0xff
 
+        if reg == 'm':
+            self.cycles += 7
+        else:
+            self.cycles += 4
+
     def stax(self, reg):
         self.memory[getattr(self, reg)] = self.a
+        self.cycles += 7
+
+    def rst(self, i):
+        self.push('pc')
+        self.pc = 8 * i
+        self.cycles += 11
 
     @property
     def cc(self):
@@ -215,22 +251,22 @@ class State:
         self.h, self.l = extract_bytes(val)
 
 
-def emulate(state, debug=0):
+def emulate(state, debug=0, opcode=None):
 
     # XXX: You *really* don't wanna reach the end of the memory
-    opcode, arg1, arg2 = state.memory[state.pc:state.pc + 3]
-
-    if debug:
-        disassemble(state.memory, state.pc)
-    if debug > 1:
-        print("\tC=%d, P=%d, S=%d, Z=%d\n" % (state.cc.cy, state.cc.p, state.cc.s, state.cc.z))
-        print("\tA %02x B %02x C %02x D %02x E %02x H %02x L %02x SP %04x\n" % (
-            state.a, state.b, state.c, state.d, state.e, state.h, state.l, state.sp
-        ))
+    if not opcode:
+        opcode, arg1, arg2 = state.memory[state.pc:state.pc + 3]
+        if debug:
+            disassemble(state.memory, state.pc)
+        if debug > 1:
+            print("\tC=%d, P=%d, S=%d, Z=%d\n" % (state.cc.cy, state.cc.p, state.cc.s, state.cc.z))
+            print("\tA %02x B %02x C %02x D %02x E %02x H %02x L %02x SP %04x\n" % (
+                state.a, state.b, state.c, state.d, state.e, state.h, state.l, state.sp
+            ))
 
     if opcode == 0x00:
         # NOP
-        pass
+        state.nop()
     elif opcode == 0x01:
         # LXI B, D16
         state.lxi('bc', arg2, arg1)
@@ -257,6 +293,7 @@ def emulate(state, debug=0):
         x = state.a
         state.a = ((x & 1) << 7) | (x >> 1)
         state.cc.cy = (x & 1) == 1
+        state.cycles += 4
     elif opcode == 0x11:
         # LXI D, D16
         state.lxi('de', arg2, arg1)
@@ -269,11 +306,13 @@ def emulate(state, debug=0):
     elif opcode == 0x1a:
         # LDAX D
         state.a = state.memory[state.de]
+        state.cycles += 7
     elif opcode == 0x1f:
         # RAR
         x = state.a
         state.a = (state.cc.cy << 7) | (x >> 1)
         state.cc.cy = (x & 1) == 1
+        state.cycles += 4
     elif opcode == 0x21:
         # LXI H, D16
         state.lxi('hl', arg2, arg1)
@@ -290,6 +329,7 @@ def emulate(state, debug=0):
         # CMA
         # python's ~ operator uses signed not, we want unsigned not
         state.a ^= 0xff
+        state.cycles += 4
     elif opcode == 0x31:
         # LXI SP, D16
         state.lxi('sp', arg2, arg1)
@@ -298,6 +338,10 @@ def emulate(state, debug=0):
         adr = merge_bytes(arg2, arg1)
         state.memory[adr] = state.a
         state.pc += 2
+        state.cycles += 13
+    elif opcode == 0x35:
+        # DCR M
+        state.dcr('m')
     elif opcode == 0x36:
         # MVI M, D8
         state.mvi('m', arg1)
@@ -306,45 +350,58 @@ def emulate(state, debug=0):
         adr = merge_bytes(arg2, arg1)
         state.a = state.memory[adr]
         state.pc += 2
+        state.cycles += 13
     elif opcode == 0x3e:
         # MVI A, D8
         state.mvi('a', arg1)
     elif opcode == 0x41:
         # MOV B, C
         state.b = state.c
+        state.cycles += 5
     elif opcode == 0x42:
         # MOV B, D
         state.b = state.d
+        state.cycles += 5
     elif opcode == 0x43:
         # MOV, B, E
         state.b = state.e
+        state.cycles += 5
     elif opcode == 0x56:
         # MOV D, M
         state.d = state.memory[state.hl]
+        state.cycles += 7
     elif opcode == 0x5e:
         # MOV E, M
         state.e = state.memory[state.hl]
+        state.cycles += 7
     elif opcode == 0x66:
         # MOV H, M
         state.h = state.memory[state.hl]
+        state.cycles += 7
     elif opcode == 0x6f:
         # MOV L, A
         state.l = state.a
+        state.cycles += 5
     elif opcode == 0x77:
         # MOV M, A
         state.memory[state.hl] = state.a
+        state.cycles += 7
     elif opcode == 0x7a:
         # MOV A, D
         state.a = state.d
+        state.cycles += 5
     elif opcode == 0x7b:
         # MOV A, E
         state.a = state.e
+        state.cycles += 5
     elif opcode == 0x7c:
         # MOV A, H
         state.a = state.h
+        state.cycles += 5
     elif opcode == 0x7e:
         # MOV A, M
         state.a = state.memory[state.hl]
+        state.cycles += 7
     elif opcode == 0x80:
         # ADD B
         state.add('b')
@@ -368,6 +425,7 @@ def emulate(state, debug=0):
         state.pop('bc')
     elif opcode == 0xc2:
         # JNZ adr
+        state.cycles += 10
         if state.cc.z == 0:
             state.pc = merge_bytes(arg2, arg1)
             return
@@ -376,6 +434,7 @@ def emulate(state, debug=0):
     elif opcode == 0xc3:
         # JMP adr
         state.pc = merge_bytes(arg2, arg1)
+        state.cycles += 10
         return
     elif opcode == 0xc5:
         # PUSH B
@@ -389,16 +448,22 @@ def emulate(state, debug=0):
         state.cc.p = parity(ans & 0xff)
         state.a = ans & 0xff
         state.pc += 1
+        state.cycles += 7
     elif opcode == 0xc9:
         # RET
         # set pc to ret adr
         state.pc = merge_bytes(state.memory[state.sp + 1], state.memory[state.sp])
         # restore stack pointer
         state.sp += 2
+        state.cycles += 10
     elif opcode == 0xca:
         # JZ
+        state.cycles += 10
         if state.cc.z:
             state.pc = merge_bytes(arg2, arg1)
+            return
+        else:
+            state.pc += 2
     elif opcode == 0xcd:
         # CALL adr
         # put the return address on the stack first
@@ -409,6 +474,7 @@ def emulate(state, debug=0):
         state.sp -= 2
         # then go to adr
         state.pc = merge_bytes(arg2, arg1)
+        state.cycles += 17
         return
     elif opcode == 0xd1:
         # POP D
@@ -417,9 +483,19 @@ def emulate(state, debug=0):
         # OUT byte
         bus.write(arg1, state.a)
         state.pc += 1
+        state.cycles += 10
     elif opcode == 0xd5:
         # PUSH D
         state.push('de')
+    elif opcode == 0xd7:
+        # RST 2
+        state.rst(2)
+        return
+    elif opcode == 0xdb:
+        # IN byte
+        state.a = bus.read(0x02)
+        state.pc += 1
+        state.cycles += 10
     elif opcode == 0xe1:
         # POP H
         state.pop('hl')
@@ -435,9 +511,11 @@ def emulate(state, debug=0):
         state.cc.p = parity(x & 0xff)
         state.a = x
         state.pc += 1
+        state.cycles += 7
     elif opcode == 0xeb:
         # XCHG
         state.hl, state.de = state.de, state.hl
+        state.cycles += 5
     elif opcode == 0xf1:
         # POP PSW
         state.pop('psw')
@@ -447,6 +525,7 @@ def emulate(state, debug=0):
     elif opcode == 0xfb:
         # EI
         state.int_enable = 1
+        state.cycles += 4
     elif opcode == 0xfe:
         # CPI, D8
         x = state.a - arg1
@@ -455,6 +534,7 @@ def emulate(state, debug=0):
         state.cc.p = parity(x & 0xff)
         state.cc.cy = state.a < arg1
         state.pc += 1
+        state.cycles += 7
     else:
         raise NotImplementedError("opcode %02x is not implemented" % opcode)
 
@@ -479,10 +559,20 @@ def main():
 
     count = 1
     while 1:
+        if state.int_enable:
+            if bus.loop(state.cycles):
+                state.cycles = 0
+                emulate(state, args.debug, bus.interrupts.pop())
+                continue
+
         emulate(state, args.debug)
-        if args.debug == 3:
+
+        if args.debug >= 3:
             print("Instruction count: %d" % count)
             count += 1
+
+        if args.debug >= 4:
+            print("Current cycles: %d" % state.cycles)
 
 
 if __name__ == '__main__':
