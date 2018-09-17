@@ -1,4 +1,6 @@
 import argparse
+import numpy as np
+import pygame
 
 from disassembler import disassemble
 from bus import bus
@@ -249,6 +251,37 @@ class State:
     @hl.setter
     def hl(self, val):
         self.h, self.l = extract_bytes(val)
+
+    @property
+    def bitmap(self):
+
+        def bitarray(byte):
+            return [(byte >> i) & 1 for i in range(7, -1, -1)]
+
+        def bit2rgb(bit):
+            if bit:
+                return [255, 255, 255]
+            return [0, 0, 0]
+
+        video_ram = self.memory[0x2400:]
+
+        bytemap = []
+        for i in range(256):
+            start = i * 28
+            bytemap.append(video_ram[start:start + 28])
+
+        bitmap = []
+        for row in bytemap:
+            line = []
+            for byte in row:
+                line += bitarray(byte)
+            bitmap.append(line)
+
+        for i, row in enumerate(bitmap):
+            for j, col in enumerate(row):
+                bitmap[i][j] = bit2rgb(col)
+
+        return np.array(bitmap)
 
 
 def emulate(state, debug=0, opcode=None):
@@ -557,10 +590,16 @@ def main():
     with open(args.bin[0], 'rb') as f:
         state = State(f.read())
 
+    pygame.init()
+    screen = pygame.display.set_mode((256, 224))
+
     count = 1
     while 1:
         if state.int_enable:
             if bus.loop(state.cycles):
+                # Screen refresh
+                pygame.surfarray.blit_array(screen, state.bitmap)
+                pygame.display.flip()
                 state.cycles = 0
                 emulate(state, args.debug, bus.interrupts.pop())
                 continue
