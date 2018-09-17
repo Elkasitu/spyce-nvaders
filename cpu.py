@@ -204,6 +204,7 @@ class State:
         self.cycles += 7
 
     def rst(self, i):
+        self.int_enable = 0
         self.push('pc')
         self.pc = 8 * i
         self.cycles += 11
