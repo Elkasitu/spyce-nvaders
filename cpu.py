@@ -334,6 +334,12 @@ def emulate(state, debug=0, opcode=None):
     elif opcode == 0x13:
         # INX D
         state.inx('de')
+    elif opcode == 0x17:
+        # RAL
+        x = state.a
+        state.a = (x << 1) | state.cc.cy
+        state.cc.cy = (x & 0x80) == 1
+        state.cycles += 4
     elif opcode == 0x19:
         # DAD D
         state.dad('de')
@@ -483,6 +489,15 @@ def emulate(state, debug=0, opcode=None):
         state.a = ans & 0xff
         state.pc += 1
         state.cycles += 7
+    elif opcode == 0xc8:
+        # RZ
+        if state.cc.z:
+            state.pc = merge_bytes(state.memory[state.sp + 1], state.memory[state.sp])
+            state.sp += 2
+            state.cycles += 11
+            return
+        else:
+            state.cycles += 5
     elif opcode == 0xc9:
         # RET
         # set pc to ret adr
@@ -490,6 +505,7 @@ def emulate(state, debug=0, opcode=None):
         # restore stack pointer
         state.sp += 2
         state.cycles += 10
+        return
     elif opcode == 0xca:
         # JZ
         state.cycles += 10
@@ -501,7 +517,7 @@ def emulate(state, debug=0, opcode=None):
     elif opcode == 0xcd:
         # CALL adr
         # put the return address on the stack first
-        ret = state.pc + 2
+        ret = state.pc + 3
         hi, lo = extract_bytes(ret)
         state.memory[state.sp - 1] = hi
         state.memory[state.sp - 2] = lo
@@ -525,9 +541,17 @@ def emulate(state, debug=0, opcode=None):
         # RST 2
         state.rst(2)
         return
+    elif opcode == 0xda:
+        # JC adr
+        state.cycles += 10
+        if state.cc.cy:
+            state.pc = merge_bytes(arg2, arg1)
+            return
+        else:
+            state.pc += 2
     elif opcode == 0xdb:
         # IN byte
-        state.a = bus.read(0x02)
+        state.a = bus.read(arg1)
         state.pc += 1
         state.cycles += 10
     elif opcode == 0xe1:
