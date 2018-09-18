@@ -267,9 +267,9 @@ class State:
         video_ram = self.memory[0x2400:]
 
         bytemap = []
-        for i in range(256):
-            start = i * 28
-            bytemap.append(video_ram[start:start + 28])
+        for i in range(224):
+            start = i * 32
+            bytemap.append(video_ram[start:start + 32])
 
         bitmap = []
         for row in bytemap:
@@ -391,6 +391,9 @@ def emulate(state, debug=0, opcode=None):
         state.a = state.memory[adr]
         state.pc += 2
         state.cycles += 13
+    elif opcode == 0x3d:
+        # DCR A
+        state.dcr('a')
     elif opcode == 0x3e:
         # MVI A, D8
         state.mvi('a', arg1)
@@ -616,13 +619,14 @@ def main():
         state = State(f.read())
 
     pygame.init()
-    screen = pygame.display.set_mode((256, 224))
+    screen = pygame.display.set_mode((224, 256))
 
     count = 1
     while 1:
         if state.int_enable:
             if bus.loop(state.cycles):
                 # Screen refresh
+                screen.fill((0, 0, 0))
                 pygame.surfarray.blit_array(screen, state.bitmap)
                 pygame.display.flip()
                 state.cycles = 0
