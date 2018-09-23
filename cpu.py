@@ -270,7 +270,8 @@ class State:
         bytemap = []
         for i in range(224):
             start = i * 32
-            bytemap.append(video_ram[start:start + 32])
+            # Inverse bcz little-endianness?
+            bytemap.append(video_ram[start:start + 32][::-1])
 
         bitmap = []
         for row in bytemap:
@@ -283,8 +284,7 @@ class State:
             for j, col in enumerate(row):
                 bitmap[i][j] = bit2rgb(col)
 
-        arr = np.array(bitmap)
-        return arr
+        return np.array(bitmap)
 
 
 def emulate(state, debug=0, opcode=None):
@@ -309,6 +309,9 @@ def emulate(state, debug=0, opcode=None):
     elif opcode == 0x02:
         # STAX B
         state.stax('bc')
+    elif opcode == 0x03:
+        # INX B
+        state.inx('bc')
     elif opcode == 0x05:
         # DCR B
         state.dcr('b')
@@ -318,6 +321,10 @@ def emulate(state, debug=0, opcode=None):
     elif opcode == 0x09:
         # DAD B
         state.dad('bc')
+    elif opcode == 0x0a:
+        # LDAX B
+        state.a = state.memory[state.bc]
+        state.cycles += 7
     elif opcode == 0x0d:
         # DCR C
         state.dcr('c')
@@ -387,6 +394,10 @@ def emulate(state, debug=0, opcode=None):
     elif opcode == 0x36:
         # MVI M, D8
         state.mvi('m', arg1)
+    elif opcode == 0x37:
+        # STC
+        state.cc.cy = 1
+        state.cycles += 4
     elif opcode == 0x3a:
         # LDA adr
         adr = merge_bytes(arg2, arg1)
@@ -411,18 +422,34 @@ def emulate(state, debug=0, opcode=None):
         # MOV, B, E
         state.b = state.e
         state.cycles += 5
+    elif opcode == 0x4f:
+        # MOV C, A
+        state.c = state.a
+        state.cycles += 5
     elif opcode == 0x56:
         # MOV D, M
         state.d = state.memory[state.hl]
         state.cycles += 7
+    elif opcode == 0x57:
+        # MOV D, A
+        state.d = state.a
+        state.cycles += 5
     elif opcode == 0x5e:
         # MOV E, M
         state.e = state.memory[state.hl]
         state.cycles += 7
+    elif opcode == 0x5f:
+        # MOV E, A
+        state.e = state.a
+        state.cycles += 5
     elif opcode == 0x66:
         # MOV H, M
         state.h = state.memory[state.hl]
         state.cycles += 7
+    elif opcode == 0x67:
+        # MOV H, A
+        state.h = state.a
+        state.cycles += 5
     elif opcode == 0x6f:
         # MOV L, A
         state.l = state.a
@@ -558,6 +585,15 @@ def emulate(state, debug=0, opcode=None):
         # RST 2
         state.rst(2)
         return
+    elif opcode == 0xd8:
+        # RC
+        if state.cc.cy:
+            state.cycles += 11
+            state.pc = merge_bytes(state.memory[state.sp + 1], state.memory[state.sp])
+            state.sp += 2
+            return
+        else:
+            state.cycles += 5
     elif opcode == 0xda:
         # JC adr
         state.cycles += 10
@@ -632,7 +668,7 @@ def main():
     with open(args.bin[0], 'rb') as f:
         state = State(f.read())
 
-    pygame.init()
+    pygame.display.init()
     screen = pygame.display.set_mode((224, 256))
 
     count = 1
