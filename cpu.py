@@ -1,6 +1,7 @@
 import argparse
 import numpy as np
 import pygame
+import time
 
 from disassembler import disassemble
 from bus import bus
@@ -282,7 +283,8 @@ class State:
             for j, col in enumerate(row):
                 bitmap[i][j] = bit2rgb(col)
 
-        return np.array(bitmap)
+        arr = np.array(bitmap)
+        return arr
 
 
 def emulate(state, debug=0, opcode=None):
@@ -529,9 +531,21 @@ def emulate(state, debug=0, opcode=None):
         state.pc = merge_bytes(arg2, arg1)
         state.cycles += 17
         return
+    elif opcode == 0xcf:
+        # RST 1
+        state.rst(1)
+        return
     elif opcode == 0xd1:
         # POP D
         state.pop('de')
+    elif opcode == 0xd2:
+        # JNC adr
+        state.cycles += 10
+        if not state.cc.cy:
+            state.pc = merge_bytes(arg2, arg1)
+            return
+        else:
+            state.pc += 2
     elif opcode == 0xd3:
         # OUT byte
         bus.write(arg1, state.a)
@@ -630,7 +644,7 @@ def main():
                 pygame.surfarray.blit_array(screen, state.bitmap)
                 pygame.display.flip()
                 state.cycles = 0
-                emulate(state, args.debug, bus.interrupts.pop())
+                emulate(state, args.debug, bus.interrupts.popleft())
                 continue
 
         emulate(state, args.debug)

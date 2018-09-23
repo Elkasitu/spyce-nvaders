@@ -31,7 +31,7 @@ class Bus(object):
         refresh = devices['dspl'].refresh(cycles)
 
         if refresh:
-            self.interrupts.append(refresh)
+            self.interrupts.extend(refresh)
             # CPU clock tick
             return True
 

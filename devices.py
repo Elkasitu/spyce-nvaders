@@ -1,3 +1,6 @@
+import time
+
+
 class ShiftRegister:
 
     def __init__(self):
@@ -39,8 +42,8 @@ class Display:
         self.max_cycles = 2000000/60
 
     def refresh(self, cycles):
-        if cycles > self.max_cycles:
-            return 0xd7
+        if cycles >= self.max_cycles:
+            return 0xcf, 0xd7
 
 
 devices = {
