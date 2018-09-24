@@ -156,13 +156,11 @@ class State:
 
     def inx(self, reg):
         ans = getattr(self, reg) + 1
-        self.calc_flags(ans, False)
         setattr(self, reg, ans & 0xffff)
         self.cycles += 5
 
     def dcx(self, reg):
         ans = getattr(self, reg) - 1
-        self.calc_flags(ans, False)
         setattr(self, reg, ans & 0xffff)
         self.cycles += 5
 
@@ -384,7 +382,7 @@ def emulate(state, debug=0, opcode=None):
         state.dcr('d')
     elif opcode == 0x16:
         # MVI D, D8
-        state.mvi('d')
+        state.mvi('d', arg1)
     elif opcode == 0x17:
         # RAL
         x = state.a
@@ -456,6 +454,12 @@ def emulate(state, debug=0, opcode=None):
     elif opcode == 0x29:
         # DAD H
         state.dad('hl')
+    elif opcode == 0x2a:
+        # LXI H, D16
+        state.lxi('hl', arg2, arg1)
+    elif opcode == 0x2b:
+        # DCX H
+        state.dcx('hl')
     elif opcode == 0x2e:
         # MVI L, D8
         state.mvi('l', arg1)
@@ -489,6 +493,9 @@ def emulate(state, debug=0, opcode=None):
         state.a = state.memory[adr]
         state.pc += 2
         state.cycles += 13
+    elif opcode == 0x3b:
+        # DCX SP
+        state.dcx('sp')
     elif opcode == 0x3d:
         # DCR A
         state.dcr('a')
@@ -547,6 +554,10 @@ def emulate(state, debug=0, opcode=None):
         # MOV M, A
         state.memory[state.hl] = state.a
         state.cycles += 7
+    elif opcode == 0x78:
+        # MOV A, B
+        state.a = state.b
+        state.cycles += 5
     elif opcode == 0x79:
         # MOv A, C
         state.a = state.c
@@ -577,9 +588,24 @@ def emulate(state, debug=0, opcode=None):
     elif opcode == 0x81:
         # ADD C
         state.add('c')
+    elif opcode == 0x82:
+        # ADD D
+        state.add('d')
+    elif opcode == 0x83:
+        # ADD E
+        state.add('e')
+    elif opcode == 0x84:
+        # ADD H
+        state.add('h')
+    elif opcode == 0x85:
+        # ADD L
+        state.add('l')
     elif opcode == 0x86:
         # ADD M
         state.add('m')
+    elif opcode == 0x87:
+        # ADD A
+        state.add('a')
     elif opcode == 0xa7:
         # ANA A
         state.ana('a')
@@ -595,6 +621,15 @@ def emulate(state, debug=0, opcode=None):
     elif opcode == 0xb6:
         # ORA M
         state.ora('m')
+    elif opcode == 0xc0:
+        # RNZ
+        if not state.cc.z:
+            state.pc = merge_bytes(state.memory[state.sp + 1], state.memory[state.sp])
+            state.sp += 2
+            state.cycles += 11
+            return
+        else:
+            state.cycles += 5
     elif opcode == 0xc1:
         # POP B
         state.pop('bc')
@@ -611,6 +646,19 @@ def emulate(state, debug=0, opcode=None):
         state.pc = merge_bytes(arg2, arg1)
         state.cycles += 10
         return
+    elif opcode == 0xc4:
+        # CNZ adr
+        if not state.cc.z:
+            state.cycles += 17
+            ret = state.pc + 3
+            hi, lo = extract_bytes(ret)
+            state.memory[state.sp - 1] = hi
+            state.memory[state.sp - 2] = lo
+            state.sp -= 2
+            state.pc = merge_bytes(arg2, arg1)
+            return
+        else:
+            state.cycles += 11
     elif opcode == 0xc5:
         # PUSH B
         state.push('bc')
@@ -665,6 +713,15 @@ def emulate(state, debug=0, opcode=None):
         # RST 1
         state.rst(1)
         return
+    elif opcode == 0xd0:
+        # RNC
+        if not state.cc.cy:
+            state.cycles += 11
+            state.pc = merge_bytes(state.memory[state.sp + 1], state.memory[state.sp])
+            state.sp += 2
+            return
+        else:
+            state.cycles += 5
     elif opcode == 0xd1:
         # POP D
         state.pop('de')
@@ -713,6 +770,14 @@ def emulate(state, debug=0, opcode=None):
     elif opcode == 0xe1:
         # POP H
         state.pop('hl')
+    elif opcode == 0xe2:
+        # JPO adr
+        state.cycles += 10
+        if not state.cc.p:
+            state.pc = merge_bytes(arg2, arg1)
+            return
+        else:
+            state.pc += 2
     elif opcode == 0xe3:
         # XTHL
         state.l, state.memory[state.sp] = state.memory[state.sp], state.l
