@@ -2,9 +2,12 @@ import argparse
 import numpy as np
 import pygame
 import time
+import sys
 
 from disassembler import disassemble
 from bus import bus
+
+# flake8: noqa
 
 
 def merge_bytes(high, low):
@@ -496,12 +499,18 @@ def emulate(state, debug=0, opcode=None):
     elif opcode == 0x3b:
         # DCX SP
         state.dcx('sp')
+    elif opcode == 0x3c:
+        # INR A
+        state.inr('a')
     elif opcode == 0x3d:
         # DCR A
         state.dcr('a')
     elif opcode == 0x3e:
         # MVI A, D8
         state.mvi('a', arg1)
+    elif opcode == 0x40:
+        # MOV B, B
+        state.cycles += 5
     elif opcode == 0x41:
         # MOV B, C
         state.b = state.c
@@ -514,13 +523,75 @@ def emulate(state, debug=0, opcode=None):
         # MOV, B, E
         state.b = state.e
         state.cycles += 5
+    elif opcode == 0x44:
+        # MOV B, H
+        state.b = state.h
+        state.cycles += 5
+    elif opcode == 0x45:
+        # MOV B, L
+        state.b = state.l
+        state.cycles += 5
     elif opcode == 0x46:
         # MOV B, M
         state.b = state.memory[state.hl]
         state.cycles += 7
+    elif opcode == 0x47:
+        # MOV B, A
+        state.b = state.a
+        state.cycles += 5
+    elif opcode == 0x48:
+        # MOV C, B
+        state.c = state.b
+        state.cycles += 5
+    elif opcode == 0x49:
+        # MOV C, C
+        state.cycles += 5
+    elif opcode == 0x4a:
+        # MOV C, D
+        state.c = state.d
+        state.cycles += 5
+    elif opcode == 0x4b:
+        # MOV C, E
+        state.c = state.e
+        state.cycles += 5
+    elif opcode == 0x4c:
+        # MOV C, H
+        state.c = state.h
+        state.cycles += 5
+    elif opcode == 0x4d:
+        # MOV C, L
+        state.c = state.h
+        state.cycles += 5
+    elif opcode == 0x4e:
+        # MOV C, M
+        state.c = state.memory[state.hl]
+        state.cycles += 7
     elif opcode == 0x4f:
         # MOV C, A
         state.c = state.a
+        state.cycles += 5
+    elif opcode == 0x50:
+        # MOV D, B
+        state.d = state.b
+        state.cycles += 5
+    elif opcode == 0x51:
+        # MOV D, C
+        state.d = state.c
+        state.cycles += 5
+    elif opcode == 0x52:
+        # MOV D, D
+        state.cycles += 5
+    elif opcode == 0x53:
+        # MOV D, E
+        state.d = state.e
+        state.cycles += 5
+    elif opcode == 0x54:
+        # MOV D, H
+        state.d = state.h
+        state.cycles += 5
+    elif opcode == 0x55:
+        # MOV D, L
+        state.d = state.l
         state.cycles += 5
     elif opcode == 0x56:
         # MOV D, M
@@ -530,6 +601,29 @@ def emulate(state, debug=0, opcode=None):
         # MOV D, A
         state.d = state.a
         state.cycles += 5
+    elif opcode == 0x58:
+        # MOV E, B
+        state.e = state.b
+        state.cycles += 5
+    elif opcode == 0x59:
+        # MOV E, C
+        state.e = state.c
+        state.cycles += 5
+    elif opcode == 0x5a:
+        # MOV E, D
+        state.e = state.d
+        state.cycles += 5
+    elif opcode == 0x5b:
+        # MOV E, E
+        state.cycles += 5
+    elif opcode == 0x5c:
+        # MOV E, H
+        state.e = state.h
+        state.cycles += 5
+    elif opcode == 0x5d:
+        # MOV E, L
+        state.e = state.l
+        state.cycles += 5
     elif opcode == 0x5e:
         # MOV E, M
         state.e = state.memory[state.hl]
@@ -537,6 +631,29 @@ def emulate(state, debug=0, opcode=None):
     elif opcode == 0x5f:
         # MOV E, A
         state.e = state.a
+        state.cycles += 5
+    elif opcode == 0x60:
+        # MOV H, B
+        state.h = state.b
+        state.cycles += 5
+    elif opcode == 0x61:
+        # MOV H, C
+        state.h = state.c
+        state.cycles += 5
+    elif opcode == 0x62:
+        # MOV H, D
+        state.h = state.d
+        state.cycles += 5
+    elif opcode == 0x63:
+        # MOV H, E
+        state.h = state.e
+        state.cycles += 5
+    elif opcode == 0x64:
+        # MOV H, H
+        state.cycles += 5
+    elif opcode == 0x65:
+        # MOV H, L
+        state.h = state.l
         state.cycles += 5
     elif opcode == 0x66:
         # MOV H, M
@@ -546,10 +663,65 @@ def emulate(state, debug=0, opcode=None):
         # MOV H, A
         state.h = state.a
         state.cycles += 5
+    elif opcode == 0x68:
+        # MOV L, B
+        state.l = state.b
+        state.cycles += 5
+    elif opcode == 0x69:
+        # MOV L, C
+        state.l = state.c
+        state.cycles += 5
+    elif opcode == 0x6a:
+        # MOV L, D
+        state.l = state.c
+        state.cycles += 5
+    elif opcode == 0x6b:
+        # MOV L, E
+        state.l = state.e
+        state.cycles += 5
+    elif opcode == 0x6c:
+        # MOV L, H
+        state.l = state.h
+        state.cycles += 5
+    elif opcode == 0x6d:
+        # MOV L, L
+        state.cycles += 5
+    elif opcode == 0x6e:
+        # MOV L, M
+        state.l = state.memory[state.hl]
+        state.cycles += 7
     elif opcode == 0x6f:
         # MOV L, A
         state.l = state.a
         state.cycles += 5
+    elif opcode == 0x70:
+        # MOV M, B
+        state.memory[state.hl] = state.b
+        state.cycles += 7
+    elif opcode == 0x71:
+        # MOV M, C
+        state.memory[state.hl] = state.c
+        state.cycles += 7
+    elif opcode == 0x72:
+        # MOV M, D
+        state.memory[state.hl] = state.d
+        state.cycles += 7
+    elif opcode == 0x73:
+        # MOV M, E
+        state.memory[state.hl] = state.e
+        state.cycles += 7
+    elif opcode == 0x74:
+        # MOV M, H
+        state.memory[state.hl] = state.h
+        state.cycles += 7
+    elif opcode == 0x75:
+        # MOV M, L
+        state.memory[state.hl] = state.l
+        state.cycles += 7
+    elif opcode == 0x76:
+        # HLT
+        state.cycles = 7
+        sys.exit(0)
     elif opcode == 0x77:
         # MOV M, A
         state.memory[state.hl] = state.a
@@ -582,6 +754,9 @@ def emulate(state, debug=0, opcode=None):
         # MOV A, M
         state.a = state.memory[state.hl]
         state.cycles += 7
+    elif opcode == 0x7f:
+        # MOV A, A
+        state.cycles += 5
     elif opcode == 0x80:
         # ADD B
         state.add('b')
@@ -618,6 +793,12 @@ def emulate(state, debug=0, opcode=None):
     elif opcode == 0xb3:
         # ORA E
         state.ora('e')
+    elif opcode == 0xb4:
+        # ORA H
+        state.ora('h')
+    elif opcode == 0xb5:
+        # ORA L
+        state.ora('l')
     elif opcode == 0xb6:
         # ORA M
         state.ora('m')
@@ -659,6 +840,7 @@ def emulate(state, debug=0, opcode=None):
             return
         else:
             state.cycles += 11
+            state.pc += 2
     elif opcode == 0xc5:
         # PUSH B
         state.push('bc')
@@ -696,6 +878,20 @@ def emulate(state, debug=0, opcode=None):
             state.pc = merge_bytes(arg2, arg1)
             return
         else:
+            state.pc += 2
+    elif opcode == 0xcc:
+        # CZ adr
+        if state.cc.z:
+            state.cycles += 17
+            ret = state.pc + 3
+            hi, lo = extract_bytes(ret)
+            state.memory[state.sp - 1] = hi
+            state.memory[state.sp - 2] = lo
+            state.sp -= 2
+            state.pc = merge_bytes(arg2, arg1)
+            return
+        else:
+            state.cycles += 11
             state.pc += 2
     elif opcode == 0xcd:
         # CALL adr
@@ -738,6 +934,20 @@ def emulate(state, debug=0, opcode=None):
         bus.write(arg1, state.a)
         state.pc += 1
         state.cycles += 10
+    elif opcode == 0xd4:
+        # CNC adr
+        if not state.cc.cy:
+            state.cycles += 17
+            ret = state.pc + 3
+            hi, lo = extract_bytes(ret)
+            state.memory[state.sp - 1] = hi
+            state.memory[state.sp - 2] = lo
+            state.sp -= 2
+            state.pc = merge_bytes(arg2, arg1)
+            return
+        else:
+            state.cycles += 11
+            state.pc += 2
     elif opcode == 0xd5:
         # PUSH D
         state.push('de')
@@ -763,10 +973,19 @@ def emulate(state, debug=0, opcode=None):
         else:
             state.pc += 2
     elif opcode == 0xdb:
-        # IN byte
+        # IN D8
         state.a = bus.read(arg1)
         state.pc += 1
         state.cycles += 10
+    elif opcode == 0xde:
+        # SBI D8
+        val = arg1 + state.cc.cy
+        tc_val = 0xff ^ val
+        ans = state.a + tc_val
+        state.calc_flags(ans)
+        state.a = ans & 0xff
+        state.cycles += 7
+        state.pc += 1
     elif opcode == 0xe1:
         # POP H
         state.pop('hl')
@@ -804,12 +1023,34 @@ def emulate(state, debug=0, opcode=None):
         # XCHG
         state.hl, state.de = state.de, state.hl
         state.cycles += 5
+    elif opcode == 0xee:
+        # XRI D8
+        ans = state.a ^ arg1
+        state.calc_flags(ans)
+        state.a = ans & 0xff
+        state.cycles += 7
+        state.pc += 1
     elif opcode == 0xf1:
         # POP PSW
         state.pop('psw')
     elif opcode == 0xf5:
         # PUSH PSW
         state.push('psw')
+    elif opcode == 0xf6:
+        # ORI D8
+        ans = state.a | arg1
+        state.calc_flags(ans)
+        state.a = ans & 0xff
+        state.cycles += 7
+        state.pc += 1
+    elif opcode == 0xfa:
+        # JM adr
+        state.cycles += 10
+        if state.cc.s:
+            state.pc = merge_bytes(arg2, arg1)
+            return
+        else:
+            state.pc += 2
     elif opcode == 0xfb:
         # EI
         state.int_enable = 1
@@ -823,6 +1064,10 @@ def emulate(state, debug=0, opcode=None):
         state.cc.cy = state.a < arg1
         state.pc += 1
         state.cycles += 7
+    elif opcode == 0xff:
+        # RST 7
+        state.rst(7)
+        return
     else:
         raise NotImplementedError("opcode %02x is not implemented" % opcode)
 
@@ -836,6 +1081,8 @@ def parse():
     parser.add_argument('-d', '--debug', action='count', default=0,
                         help="Display debug output, can be specified up to 3 times")
     parser.add_argument('bin', nargs=1, help="Program to execute")
+    parser.add_argument('-H', '--headless', action='store_true', default=False,
+                        help="Launch game without rendering it, for debugging purposes")
     return parser.parse_args()
 
 
@@ -846,6 +1093,7 @@ def main():
         state = State(f.read())
 
     pygame.display.init()
+    pygame.time.Clock().tick(60)
     screen = pygame.display.set_mode((224, 256))
 
     count = 1
@@ -853,9 +1101,12 @@ def main():
         if state.int_enable:
             if bus.loop(state.cycles):
                 # Screen refresh
-                screen.fill((0, 0, 0))
-                pygame.surfarray.blit_array(screen, state.bitmap)
-                pygame.display.flip()
+                if not args.headless:
+                    # TODO: optimize by keeping track of previous bitmap and comparing
+                    screen.fill((0, 0, 0))
+                    screen.convert()
+                    pygame.surfarray.blit_array(screen, state.bitmap)
+                    pygame.display.flip()
                 state.cycles = 0
                 emulate(state, args.debug, bus.interrupts.popleft())
                 continue

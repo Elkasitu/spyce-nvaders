@@ -2,16 +2,16 @@ class ShiftRegister:
 
     def __init__(self):
         self._register = 0x0000
-        self._offset = 0
+        self._offset = 0x0
 
     def get_register(self):
-        return (self._register >> (8 - self._offset)) & 0xff
+        return (self._register >> self._offset) & 0xff
 
     def shift(self, val):
-        self._register = (val << 8) | (self._register >> 8)
+        self._register = (self._register >> 8) | (val << 7)
 
     def set_offset(self, val):
-        self._offset = val
+        self._offset = (val ^ 0xff) & 0x07
 
 
 class Controller:
@@ -26,11 +26,14 @@ class Controller:
     def get_p2(self):
         return self._p2_reg
 
-    def mv_left_p1(self):
-        return self._p1_reg | 0x20
+    def toggle_start_p1(self):
+        self._p1_reg |= 0x02
 
-    def mv_right_p1(self):
-        return self._p1_reg | 0x40
+    def toggle_left_p1(self):
+        self._p1_reg |= 0x20
+
+    def toggle_right_p1(self):
+        self._p1_reg |= 0x40
 
 
 class Display:

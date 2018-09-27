@@ -1,6 +1,9 @@
 from collections import deque
 from devices import devices
 
+import pygame
+import sys
+
 
 class Bus(object):
 
@@ -29,6 +32,19 @@ class Bus(object):
 
     def loop(self, cycles):
         refresh = devices['dspl'].refresh(cycles)
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                sys.exit(0)
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    sys.exit(0)
+                if event.key == pygame.K_LEFT:
+                    devices['ctrl'].toggle_left_p1()
+                elif event.key == pygame.K_RIGHT:
+                    devices['ctrl'].toggle_right_p1()
+                elif event.key == pygame.K_RETURN:
+                    devices['ctrl'].toggle_start_p1()
 
         if refresh:
             self.interrupts.extend(refresh)
