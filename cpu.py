@@ -303,6 +303,56 @@ class State:
         self.pc = 8 * i
         self.cycles += 11
 
+    def jmp(self, adr, cc=None, opposite=False):
+        if cc:
+            cc = getattr(self.cc, cc)
+            # generalization for FLAG/NOTFLAG
+            if bool(cc) != opposite:
+                self.pc = adr
+            else:
+                self.pc += 3
+        else:
+            self.pc = adr
+        self.cycles += 10
+
+    def ret(self, cc=None, opposite=False):
+        if cc:
+            cc = getattr(self.cc, cc)
+            if bool(cc) != opposite:
+                self.pc = merge_bytes(self.memory[self.sp + 1], self.memory[self.sp])
+                self.sp += 2
+                self.cycles += 11
+            else:
+                self.cycles += 5
+                self.pc += 1
+        else:
+            self.pc = merge_bytes(self.memory[self.sp + 1], self.memory[self.sp])
+            self.sp += 2
+            self.cycles += 10
+
+    def call(self, adr, cc=None, opposite=False):
+        if cc:
+            cc = getattr(self.cc, cc)
+            if bool(cc) != opposite:
+                self.cycles += 17
+                ret = self.pc + 3
+                hi, lo = extract_bytes(ret)
+                self.memory[self.sp - 1] = hi
+                self.memory[self.sp - 2] = lo
+                self.sp -= 2
+                self.pc = adr
+            else:
+                self.cycles += 11
+                self.pc += 3
+        else:
+            self.cycles += 17
+            ret = self.pc + 3
+            hi, lo = extract_bytes(ret)
+            self.memory[self.sp - 1] = hi
+            self.memory[self.sp - 2] = lo
+            self.sp -= 2
+            self.pc = adr
+
     @property
     def cc(self):
         return self._cc
@@ -384,7 +434,9 @@ def emulate(state, debug=0, opcode=None):
 
     # XXX: You *really* don't wanna reach the end of the memory
     if not opcode:
-        opcode, arg1, arg2 = state.memory[state.pc:state.pc + 3]
+        opcode = state.memory[state.pc]
+        arg1 = None if (state.pc + 1) >= len(state.memory) else state.memory[state.pc + 1]
+        arg2 = None if (state.pc + 2) >= len(state.memory) else state.memory[state.pc + 2]
         if debug:
             disassemble(state.memory, state.pc)
         if debug > 1:
@@ -532,16 +584,17 @@ def emulate(state, debug=0, opcode=None):
         # DAA
         lsb = state.a & 0x0f
         if lsb > 9 or state.cc.ac:
-            state.a |= 0x06
-        state.cc.ac = lsb + 6 > 0x0f
-        hsb = state.a >> 4
-        if hsb > 9 or state.cc.cy:
-            ans = (state.a | 0x60) & 0xff
-        if ans > 0xff:
-            state.cc.cy = 1
-        state.cc.p = parity(ans)
-        state.cc.z = ans == 0
-        state.cc.s = (ans & 0x80) != 0
+            state.a = (state.a + 0x06) & 0xff
+            state.cc.ac = (lsb + 0x06) > 0x0f
+        msb = state.a >> 4
+        if msb > 9 or state.cc.cy:
+            state.a = (state.a + 0x60) & 0xff
+            state.cc.cy = (msb + 0x06) > 0x0f
+        else:
+            state.cc.cy = 0
+        state.cc.p = parity(state.a)
+        state.cc.z = state.a == 0
+        state.cc.s = (state.a & 0x80) != 0
         state.cycles += 4
     elif opcode == 0x28:
         # NOP*
@@ -1067,144 +1120,60 @@ def emulate(state, debug=0, opcode=None):
         state.cmp('a')
     elif opcode == 0xc0:
         # RNZ
-        if not state.cc.z:
-            state.pc = merge_bytes(state.memory[state.sp + 1], state.memory[state.sp])
-            state.sp += 2
-            state.cycles += 11
-            return
-        else:
-            state.cycles += 5
+        return state.ret('z', True)
     elif opcode == 0xc1:
         # POP B
         state.pop('bc')
     elif opcode == 0xc2:
         # JNZ adr
-        state.cycles += 10
-        if state.cc.z == 0:
-            state.pc = merge_bytes(arg2, arg1)
-            return
-        else:
-            state.pc += 2
+        return state.jmp(merge_bytes(arg2, arg1), 'z', True)
     elif opcode == 0xc3:
         # JMP adr
-        state.pc = merge_bytes(arg2, arg1)
-        state.cycles += 10
-        return
+        return state.jmp(merge_bytes(arg2, arg1))
     elif opcode == 0xc4:
         # CNZ adr
-        if not state.cc.z:
-            state.cycles += 17
-            ret = state.pc + 3
-            hi, lo = extract_bytes(ret)
-            state.memory[state.sp - 1] = hi
-            state.memory[state.sp - 2] = lo
-            state.sp -= 2
-            state.pc = merge_bytes(arg2, arg1)
-            return
-        else:
-            state.cycles += 11
-            state.pc += 2
+        return state.call(merge_bytes(arg2, arg1), 'z', True)
     elif opcode == 0xc5:
         # PUSH B
         state.push('bc')
     elif opcode == 0xc6:
         # ADI byte
         state.add(arg1)
-        # ans = state.a + arg1
-        # state.cc.z = ((ans & 0xff) == 0)
-        # state.cc.s = ((ans & 0x80) != 0)
-        # state.cc.cy = ans > 0xff
-        # state.cc.p = parity(ans & 0xff)
-        # state.a = ans & 0xff
         state.pc += 1
-        # state.cycles += 7
     elif opcode == 0xc7:
         # RST 0
         return state.rst(0)
     elif opcode == 0xc8:
         # RZ
-        if state.cc.z:
-            state.pc = merge_bytes(state.memory[state.sp + 1], state.memory[state.sp])
-            state.sp += 2
-            state.cycles += 11
-            return
-        else:
-            state.cycles += 5
+        return state.ret('z')
     elif opcode == 0xc9:
         # RET
-        # set pc to ret adr
-        state.pc = merge_bytes(state.memory[state.sp + 1], state.memory[state.sp])
-        # restore stack pointer
-        state.sp += 2
-        state.cycles += 10
-        return
+        return state.ret()
     elif opcode == 0xca:
         # JZ
-        state.cycles += 10
-        if state.cc.z:
-            state.pc = merge_bytes(arg2, arg1)
-            return
-        else:
-            state.pc += 2
-    elif opcode == 0xcb:
-        # JMP* adr
-        state.cycles += 10
-        state.pc = merge_bytes(arg2, arg1)
-        return
+        return state.jmp(merge_bytes(arg2, arg1), 'z')
     elif opcode == 0xcc:
         # CZ adr
-        if state.cc.z:
-            state.cycles += 17
-            ret = state.pc + 3
-            hi, lo = extract_bytes(ret)
-            state.memory[state.sp - 1] = hi
-            state.memory[state.sp - 2] = lo
-            state.sp -= 2
-            state.pc = merge_bytes(arg2, arg1)
-            return
-        else:
-            state.cycles += 11
-            state.pc += 2
+        return state.call(merge_bytes(arg2, arg1), 'z')
     elif opcode == 0xcd:
         # CALL adr
-        # put the return address on the stack first
-        ret = state.pc + 3
-        hi, lo = extract_bytes(ret)
-        state.memory[state.sp - 1] = hi
-        state.memory[state.sp - 2] = lo
-        state.sp -= 2
-        # then go to adr
-        state.pc = merge_bytes(arg2, arg1)
-        state.cycles += 17
-        return
+        return state.call(merge_bytes(arg2, arg1))
     elif opcode == 0xce:
         # ACI D8
         state.adc(arg1)
         state.pc += 1
     elif opcode == 0xcf:
         # RST 1
-        state.rst(1)
-        return
+        return state.rst(1)
     elif opcode == 0xd0:
         # RNC
-        if not state.cc.cy:
-            state.cycles += 11
-            state.pc = merge_bytes(state.memory[state.sp + 1], state.memory[state.sp])
-            state.sp += 2
-            return
-        else:
-            state.cycles += 5
+        return state.ret('cy', True)
     elif opcode == 0xd1:
         # POP D
         state.pop('de')
     elif opcode == 0xd2:
         # JNC adr
-        state.cycles += 10
-        if not state.cc.cy:
-            state.pc = merge_bytes(arg2, arg1)
-            return
-        else:
-            state.pc += 2
+        return state.jmp(merge_bytes(arg2, arg1), 'cy', True)
     elif opcode == 0xd3:
         # OUT byte
         bus.write(arg1, state.a)
@@ -1212,18 +1181,7 @@ def emulate(state, debug=0, opcode=None):
         state.cycles += 10
     elif opcode == 0xd4:
         # CNC adr
-        if not state.cc.cy:
-            state.cycles += 17
-            ret = state.pc + 3
-            hi, lo = extract_bytes(ret)
-            state.memory[state.sp - 1] = hi
-            state.memory[state.sp - 2] = lo
-            state.sp -= 2
-            state.pc = merge_bytes(arg2, arg1)
-            return
-        else:
-            state.cycles += 11
-            state.pc += 2
+        return state.call(merge_bytes(arg2, arg1), 'cy', True)
     elif opcode == 0xd5:
         # PUSH D
         state.push('de')
@@ -1233,31 +1191,16 @@ def emulate(state, debug=0, opcode=None):
         state.pc += 1
     elif opcode == 0xd7:
         # RST 2
-        state.rst(2)
-        return
+        return state.rst(2)
     elif opcode == 0xd8:
         # RC
-        if state.cc.cy:
-            state.cycles += 11
-            state.pc = merge_bytes(state.memory[state.sp + 1], state.memory[state.sp])
-            state.sp += 2
-            return
-        else:
-            state.cycles += 5
+        return state.ret('cy')
     elif opcode == 0xd9:
         # RET*
-        state.cycles += 10
-        state.pc = merge_bytes(state.memory[state.sp + 1], state.memory[state.sp])
-        state.sp += 2
-        return
+        return state.ret()
     elif opcode == 0xda:
         # JC adr
-        state.cycles += 10
-        if state.cc.cy:
-            state.pc = merge_bytes(arg2, arg1)
-            return
-        else:
-            state.pc += 2
+        return state.jmp(merge_bytes(arg2, arg1), 'cy')
     elif opcode == 0xdb:
         # IN D8
         state.a = bus.read(arg1)
@@ -1290,12 +1233,7 @@ def emulate(state, debug=0, opcode=None):
         state.pop('hl')
     elif opcode == 0xe2:
         # JPO adr
-        state.cycles += 10
-        if not state.cc.p:
-            state.pc = merge_bytes(arg2, arg1)
-            return
-        else:
-            state.pc += 2
+        return state.jmp(merge_bytes(arg2, arg1), 'p', True)
     elif opcode == 0xe3:
         # XTHL
         state.l, state.memory[state.sp] = state.memory[state.sp], state.l
@@ -1397,12 +1335,7 @@ def emulate(state, debug=0, opcode=None):
         pass
     elif opcode == 0xfa:
         # JM adr
-        state.cycles += 10
-        if state.cc.s:
-            state.pc = merge_bytes(arg2, arg1)
-            return
-        else:
-            state.pc += 2
+        return state.jmp(merge_bytes(arg2, arg1), 's')
     elif opcode == 0xfb:
         # EI
         state.int_enable = 1
@@ -1425,8 +1358,7 @@ def emulate(state, debug=0, opcode=None):
         # state.cycles += 7
     elif opcode == 0xff:
         # RST 7
-        state.rst(7)
-        return
+        return state.rst(7)
     else:
         raise NotImplementedError("opcode %02x is not implemented" % opcode)
 
