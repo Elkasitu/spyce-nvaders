@@ -33,6 +33,18 @@ def extract_bytes(adr):
     return (adr >> 8) & 0xff, adr & 0xff
 
 
+def get_twos_comp(byte):
+    return (byte ^ 0xff) + 0x01
+
+
+def get_msb(byte):
+    return byte >> 4
+
+
+def get_lsb(byte):
+    return byte & 0xf
+
+
 def parity(n):
     """ Sets the parity bit for the Flags construct """
     return n % 2 == 0
@@ -54,7 +66,7 @@ class Flags:
 class State:
 
     def __init__(self, memory):
-        self.memory = bytearray(memory) + bytearray(0x2000)  # ROM + RAM
+        self.memory = bytearray(memory) + bytearray(0x8000)  # ROM + RAM
         self.a = 0
         self._cc = Flags()
         self.b = 0
@@ -168,23 +180,65 @@ class State:
         self.cycles += 5
 
     def inr(self, reg):
-        ans = getattr(self, reg) + 1
-        self.calc_flags(ans)
-        setattr(self, reg, ans & 0xff)
-        self.cycles += 5
-
-    def add(self, reg):
         if reg == 'm':
+            ans = self.memory[self.hl] + 1
+        else:
+            ans = getattr(self, reg) + 1
+        self.calc_flags(ans)
+        if reg == 'm':
+            self.memory[self.hl] += 1
+            self.cycles += 10
+        else:
+            setattr(self, reg, ans & 0xff)
+            self.cycles += 5
+
+    def add(self, reg, carry=False):
+        if isinstance(reg, int):
+            ans = self.a + reg
+            ans += 0 if not carry else state.cc.cy
+            self.cycles += 7
+        elif reg == 'm':
             ans = self.a + self.memory[self.hl]
+            ans += 0 if not carry else state.cc.cy
             self.cycles += 7
         else:
             ans = self.a + getattr(self, reg)
+            ans += 0 if not carry else state.cc.cy
             self.cycles += 4
         self.calc_flags(ans)
         self.a = ans & 0xff
 
+    def adc(self, reg):
+        self.add(reg, True)
+
+    def sub(self, reg, carry=False):
+        if isinstance(reg, int):
+            x = reg if not carry else reg + self.cc.cy
+            self.cycles += 7
+        elif reg == 'm':
+            x = self.memory[self.hl] if not carry else self.memory[self.hl] + self.cc.cy
+            self.cycles += 7
+        else:
+            x = getattr(self, reg) if not carry else getattr(self, reg) + self.cc.cy
+            self.cycles += 4
+        # two's complement
+        x = (x ^ 0xff) + 0x01
+        self.cc.ac = ((x & 0xf) + (self.a & 0xf)) > 0xf
+        ans = self.a + x
+        self.cc.cy = ans <= 0xff
+        self.cc.s = (ans & 0x80) != 0
+        self.cc.z = ans == 0
+        self.cc.p = parity(ans)
+        self.a = ans
+
+    def sbb(self, reg):
+        self.sub(reg, True)
+
     def ana(self, reg):
-        if reg == 'm':
+        if isinstance(reg, int):
+            ans = self.a & reg
+            self.cycles += 7
+        elif reg == 'm':
             ans = self.a & self.memory[self.hl]
             self.cycles += 7
         else:
@@ -195,7 +249,10 @@ class State:
         self.a = ans & 0xff
 
     def ora(self, reg):
-        if reg == 'm':
+        if isinstance(reg, int):
+            ans = self.a | reg
+            self.cycles += 7
+        elif reg == 'm':
             ans = self.a | self.memory[self.hl]
             self.cycles += 7
         else:
@@ -206,7 +263,10 @@ class State:
         self.a = ans & 0xff
 
     def xra(self, reg):
-        if reg == 'm':
+        if isinstance(reg, int):
+            ans = self.a ^ reg
+            self.cycles += 7
+        elif reg == 'm':
             ans = self.a ^ self.memory[self.hl]
             self.cycles += 7
         else:
@@ -215,6 +275,23 @@ class State:
 
         self.calc_flags(ans)
         self.a = ans & 0xff
+
+    def cmp(self, reg):
+        if isinstance(reg, int):
+            tc_val = get_twos_comp(reg)
+            self.cycles += 7
+        elif reg == 'm':
+            tc_val = get_twos_comp(self.memory[self.hl])
+            self.cycles += 7
+        else:
+            tc_val = get_twos_comp(self.memory[self.hl])
+            self.cycles += 4
+        self.cc.ac = (get_lsb(self.a) + get_lsb(tc_val)) > 0xf
+        ans = self.a + tc_val
+        self.cc.cy = ans <= 0xff
+        self.cc.z = (ans & 0xff) == 0x00
+        self.cc.s = (ans & 0x80) != 0
+        self.cc.p = parity(ans)
 
     def stax(self, reg):
         self.memory[getattr(self, reg)] = self.a
@@ -343,6 +420,9 @@ def emulate(state, debug=0, opcode=None):
         state.cc.cy = h
         state.a = (state.a << 1) | h
         state.cycles += 4
+    elif opcode == 0x08:
+        # NOP*
+        state.nop()
     elif opcode == 0x09:
         # DAD B
         state.dad('bc')
@@ -368,6 +448,9 @@ def emulate(state, debug=0, opcode=None):
         state.a = ((x & 1) << 7) | (x >> 1)
         state.cc.cy = (x & 1) == 1
         state.cycles += 4
+    elif opcode == 0x10:
+        # NOP*
+        state.nop()
     elif opcode == 0x11:
         # LXI D, D16
         state.lxi('de', arg2, arg1)
@@ -392,6 +475,9 @@ def emulate(state, debug=0, opcode=None):
         state.a = (x << 1) | state.cc.cy
         state.cc.cy = (x & 0x80) == 1
         state.cycles += 4
+    elif opcode == 0x18:
+        # NOP*
+        state.nop()
     elif opcode == 0x19:
         # DAD D
         state.dad('de')
@@ -417,6 +503,9 @@ def emulate(state, debug=0, opcode=None):
         state.a = (state.cc.cy << 7) | (x >> 1)
         state.cc.cy = (x & 1) == 1
         state.cycles += 4
+    elif opcode == 0x20:
+        # NOP*
+        state.nop()
     elif opcode == 0x21:
         # LXI H, D16
         state.lxi('hl', arg2, arg1)
@@ -454,6 +543,9 @@ def emulate(state, debug=0, opcode=None):
         state.cc.z = ans == 0
         state.cc.s = (ans & 0x80) != 0
         state.cycles += 4
+    elif opcode == 0x28:
+        # NOP*
+        state.nop()
     elif opcode == 0x29:
         # DAD H
         state.dad('hl')
@@ -463,6 +555,12 @@ def emulate(state, debug=0, opcode=None):
     elif opcode == 0x2b:
         # DCX H
         state.dcx('hl')
+    elif opcode == 0x2c:
+        # INR L
+        state.inr('l')
+    elif opcode == 0x2d:
+        # DCR L
+        state.dcr('l')
     elif opcode == 0x2e:
         # MVI L, D8
         state.mvi('l', arg1)
@@ -471,6 +569,9 @@ def emulate(state, debug=0, opcode=None):
         # python's ~ operator uses signed not, we want unsigned not
         state.a ^= 0xff
         state.cycles += 4
+    elif opcode == 0x30:
+        # NOP*
+        state.nop()
     elif opcode == 0x31:
         # LXI SP, D16
         state.lxi('sp', arg2, arg1)
@@ -480,6 +581,12 @@ def emulate(state, debug=0, opcode=None):
         state.memory[adr] = state.a
         state.pc += 2
         state.cycles += 13
+    elif opcode == 0x33:
+        # INX SP
+        state.inx('sp')
+    elif opcode == 0x34:
+        # INR M
+        state.inr('m')
     elif opcode == 0x35:
         # DCR M
         state.dcr('m')
@@ -490,6 +597,12 @@ def emulate(state, debug=0, opcode=None):
         # STC
         state.cc.cy = 1
         state.cycles += 4
+    elif opcode == 0x38:
+        # NOP*
+        state.nop()
+    elif opcode == 0x39:
+        # DAD SP
+        state.dad('sp')
     elif opcode == 0x3a:
         # LDA adr
         adr = merge_bytes(arg2, arg1)
@@ -508,6 +621,9 @@ def emulate(state, debug=0, opcode=None):
     elif opcode == 0x3e:
         # MVI A, D8
         state.mvi('a', arg1)
+    elif opcode == 0x3f:
+        # CMC
+        state.cc.cy ^= 0x01
     elif opcode == 0x40:
         # MOV B, B
         state.cycles += 5
@@ -781,15 +897,135 @@ def emulate(state, debug=0, opcode=None):
     elif opcode == 0x87:
         # ADD A
         state.add('a')
+    elif opcode == 0x88:
+        # ADC B
+        state.adc('b')
+    elif opcode == 0x89:
+        # ADC C
+        state.adc('c')
+    elif opcode == 0x8a:
+        # ADC D
+        state.adc('d')
+    elif opcode == 0x8b:
+        # ADC E
+        state.adc('e')
+    elif opcode == 0x8c:
+        # ADC H
+        state.adc('h')
+    elif opcode == 0x8d:
+        # ADC L
+        state.adc('l')
+    elif opcode == 0x8e:
+        # ADC M
+        state.adc('m')
+    elif opcode == 0x8f:
+        # ADC A
+        state.adc('a')
+    elif opcode == 0x90:
+        # SUB B
+        state.sub('b')
+    elif opcode == 0x91:
+        # SUB C
+        state.sub('c')
+    elif opcode == 0x92:
+        # SUB D
+        state.sub('d')
+    elif opcode == 0x93:
+        # SUB E
+        state.sub('e')
+    elif opcode == 0x94:
+        # SUB H
+        state.sub('h')
+    elif opcode == 0x95:
+        # SUB L
+        state.sub('l')
+    elif opcode == 0x96:
+        # SUB M
+        state.sub('m')
+    elif opcode == 0x97:
+        # SUB A
+        state.sub('a')
+    elif opcode == 0x98:
+        # SBB B
+        state.sbb('b')
+    elif opcode == 0x99:
+        # SBB C
+        state.sbb('c')
+    elif opcode == 0x9a:
+        # SBB D
+        state.sbb('d')
+    elif opcode == 0x9b:
+        # SBB E
+        state.sbb('e')
+    elif opcode == 0x9c:
+        # SBB H
+        state.sbb('h')
+    elif opcode == 0x9d:
+        # SBB L
+        state.sbb('l')
+    elif opcode == 0x9e:
+        # SBB M
+        state.sbb('m')
+    elif opcode == 0x9f:
+        # SBB A
+        state.sbb('a')
+    elif opcode == 0xa0:
+        # ANA B
+        state.ana('b')
+    elif opcode == 0xa1:
+        # ANA C
+        state.ana('c')
+    elif opcode == 0xa2:
+        # ANA D
+        state.ana('d')
+    elif opcode == 0xa3:
+        # ANA E
+        state.ana('e')
+    elif opcode == 0xa4:
+        # ANA H
+        state.ana('h')
+    elif opcode == 0xa5:
+        # ANA L
+        state.ana('l')
+    elif opcode == 0xa6:
+        # ANA M
+        state.ana('m')
     elif opcode == 0xa7:
         # ANA A
         state.ana('a')
+    elif opcode == 0xa8:
+        # XRA B
+        state.xra('b')
+    elif opcode == 0xa9:
+        # XRA C
+        state.xra('c')
+    elif opcode == 0xaa:
+        # XRA D
+        state.xra('d')
+    elif opcode == 0xab:
+        # XRA E
+        state.xra('e')
+    elif opcode == 0xac:
+        # XRA H
+        state.xra('h')
+    elif opcode == 0xad:
+        # XRA L
+        state.xra('l')
+    elif opcode == 0xae:
+        # XRA M
+        state.xra('m')
     elif opcode == 0xaf:
         # XRA A
         state.xra('a')
     elif opcode == 0xb0:
         # ORA B
         state.ora('b')
+    elif opcode == 0xb1:
+        # ORA C
+        state.ora('c')
+    elif opcode == 0xb2:
+        # ORA D
+        state.ora('d')
     elif opcode == 0xb3:
         # ORA E
         state.ora('e')
@@ -802,6 +1038,33 @@ def emulate(state, debug=0, opcode=None):
     elif opcode == 0xb6:
         # ORA M
         state.ora('m')
+    elif opcode == 0xb7:
+        # ORA A
+        state.ora('a')
+    elif opcode == 0xb8:
+        # CMP B
+        state.cmp('b')
+    elif opcode == 0xb9:
+        # CMP C
+        state.cmp('c')
+    elif opcode == 0xba:
+        # CMP D
+        state.cmp('d')
+    elif opcode == 0xbb:
+        # CMP E
+        state.cmp('e')
+    elif opcode == 0xbc:
+        # CMP H
+        state.cmp('h')
+    elif opcode == 0xbd:
+        # CMP L
+        state.cmp('l')
+    elif opcode == 0xbe:
+        # CMP M
+        state.cmp('m')
+    elif opcode == 0xbf:
+        # CMP A
+        state.cmp('a')
     elif opcode == 0xc0:
         # RNZ
         if not state.cc.z:
@@ -846,14 +1109,18 @@ def emulate(state, debug=0, opcode=None):
         state.push('bc')
     elif opcode == 0xc6:
         # ADI byte
-        ans = state.a + arg1
-        state.cc.z = ((ans & 0xff) == 0)
-        state.cc.s = ((ans & 0x80) != 0)
-        state.cc.cy = ans > 0xff
-        state.cc.p = parity(ans & 0xff)
-        state.a = ans & 0xff
+        state.add(arg1)
+        # ans = state.a + arg1
+        # state.cc.z = ((ans & 0xff) == 0)
+        # state.cc.s = ((ans & 0x80) != 0)
+        # state.cc.cy = ans > 0xff
+        # state.cc.p = parity(ans & 0xff)
+        # state.a = ans & 0xff
         state.pc += 1
-        state.cycles += 7
+        # state.cycles += 7
+    elif opcode == 0xc7:
+        # RST 0
+        return state.rst(0)
     elif opcode == 0xc8:
         # RZ
         if state.cc.z:
@@ -879,6 +1146,11 @@ def emulate(state, debug=0, opcode=None):
             return
         else:
             state.pc += 2
+    elif opcode == 0xcb:
+        # JMP* adr
+        state.cycles += 10
+        state.pc = merge_bytes(arg2, arg1)
+        return
     elif opcode == 0xcc:
         # CZ adr
         if state.cc.z:
@@ -905,6 +1177,10 @@ def emulate(state, debug=0, opcode=None):
         state.pc = merge_bytes(arg2, arg1)
         state.cycles += 17
         return
+    elif opcode == 0xce:
+        # ACI D8
+        state.adc(arg1)
+        state.pc += 1
     elif opcode == 0xcf:
         # RST 1
         state.rst(1)
@@ -951,6 +1227,10 @@ def emulate(state, debug=0, opcode=None):
     elif opcode == 0xd5:
         # PUSH D
         state.push('de')
+    elif opcode == 0xd6:
+        # SUI D8
+        state.sub(arg1)
+        state.pc += 1
     elif opcode == 0xd7:
         # RST 2
         state.rst(2)
@@ -964,6 +1244,12 @@ def emulate(state, debug=0, opcode=None):
             return
         else:
             state.cycles += 5
+    elif opcode == 0xd9:
+        # RET*
+        state.cycles += 10
+        state.pc = merge_bytes(state.memory[state.sp + 1], state.memory[state.sp])
+        state.sp += 2
+        return
     elif opcode == 0xda:
         # JC adr
         state.cycles += 10
@@ -977,15 +1263,28 @@ def emulate(state, debug=0, opcode=None):
         state.a = bus.read(arg1)
         state.pc += 1
         state.cycles += 10
+    elif opcode == 0xdc:
+        # CC adr
+        state.pc += 2
+    elif opcode == 0xdd:
+        # CALL* adr
+        state.pc += 2
     elif opcode == 0xde:
         # SBI D8
-        val = arg1 + state.cc.cy
-        tc_val = 0xff ^ val
-        ans = state.a + tc_val
-        state.calc_flags(ans)
-        state.a = ans & 0xff
-        state.cycles += 7
+        state.sbb(arg1)
+        # val = arg1 + state.cc.cy
+        # tc_val = 0xff ^ val
+        # ans = state.a + tc_val
+        # state.calc_flags(ans)
+        # state.a = ans & 0xff
+        # state.cycles += 7
         state.pc += 1
+    elif opcode == 0xdf:
+        # RST 3
+        return state.rst(3)
+    elif opcode == 0xe0:
+        # RPO
+        pass
     elif opcode == 0xe1:
         # POP H
         state.pop('hl')
@@ -1002,27 +1301,50 @@ def emulate(state, debug=0, opcode=None):
         state.l, state.memory[state.sp] = state.memory[state.sp], state.l
         state.h, state.memory[state.sp + 1] = state.memory[state.sp + 1], state.h
         state.cycles += 18
+    elif opcode == 0xe4:
+        # CPO adr
+        state.pc += 2
     elif opcode == 0xe5:
         # PUSH H
         state.push('hl')
     elif opcode == 0xe6:
         # ANI byte
-        x = state.a & arg1
-        state.cc.z = ((x & 0xff) == 0)
-        state.cc.s = ((x & 0x80) != 0)
-        state.cc.cy = 0
-        state.cc.p = parity(x & 0xff)
-        state.a = x
+        # x = state.a & arg1
+        # state.cc.z = ((x & 0xff) == 0)
+        # state.cc.s = ((x & 0x80) != 0)
+        # state.cc.cy = 0
+        # state.cc.p = parity(x & 0xff)
+        # state.a = x
+        state.ana(arg1)
         state.pc += 1
-        state.cycles += 7
+        # state.cycles += 7
+    elif opcode == 0xe7:
+        return state.rst(4)
+    elif opcode == 0xe8:
+        # RPE
+        pass
     elif opcode == 0xe9:
         # PCHL
         state.pc = state.hl
         state.cycles += 5
+    elif opcode == 0xea:
+        # JPE adr
+        state.cycles += 10
+        if state.cc.p:
+            state.pc = merge_bytes(arg2, arg1)
+            return
+        else:
+            state.pc += 2
     elif opcode == 0xeb:
         # XCHG
         state.hl, state.de = state.de, state.hl
         state.cycles += 5
+    elif opcode == 0xec:
+        # CPE adr
+        state.pc += 2
+    elif opcode == 0xed:
+        # CALL* adr
+        state.pc += 2
     elif opcode == 0xee:
         # XRI D8
         ans = state.a ^ arg1
@@ -1030,9 +1352,30 @@ def emulate(state, debug=0, opcode=None):
         state.a = ans & 0xff
         state.cycles += 7
         state.pc += 1
+    elif opcode == 0xef:
+        # RST 5
+        return state.rst(5)
+    elif opcode == 0xf0:
+        # RP
+        pass
     elif opcode == 0xf1:
         # POP PSW
         state.pop('psw')
+    elif opcode == 0xf2:
+        # JP adr
+        state.cycles += 10
+        if not state.cc.s:
+            state.pc = merge_bytes(arg2, arg1)
+            return
+        else:
+            state.pc += 2
+    elif opcode == 0xf3:
+        # DI
+        state.int_enable = 0
+        state.cycles += 4
+    elif opcode == 0xf4:
+        # CP adr
+        state.pc += 2
     elif opcode == 0xf5:
         # PUSH PSW
         state.push('psw')
@@ -1043,6 +1386,15 @@ def emulate(state, debug=0, opcode=None):
         state.a = ans & 0xff
         state.cycles += 7
         state.pc += 1
+    elif opcode == 0xf7:
+        # RST 6
+        return state.rst(6)
+    elif opcode == 0xf8:
+        # RM
+        pass
+    elif opcode == 0xf9:
+        # SPHL
+        pass
     elif opcode == 0xfa:
         # JM adr
         state.cycles += 10
@@ -1055,15 +1407,22 @@ def emulate(state, debug=0, opcode=None):
         # EI
         state.int_enable = 1
         state.cycles += 4
+    elif opcode == 0xfc:
+        # CM adr
+        state.pc += 2
+    elif opcode == 0xfd:
+        # CALL* adr
+        state.pc += 2
     elif opcode == 0xfe:
         # CPI, D8
-        x = state.a - arg1
-        state.cc.z = (x & 0xff) == 0
-        state.cc.s = (x & 0x80) != 0
-        state.cc.p = parity(x & 0xff)
-        state.cc.cy = state.a < arg1
+        state.cmp(arg1)
+        # x = state.a - arg1
+        # state.cc.z = (x & 0xff) == 0
+        # state.cc.s = (x & 0x80) != 0
+        # state.cc.p = parity(x & 0xff)
+        # state.cc.cy = state.a < arg1
         state.pc += 1
-        state.cycles += 7
+        # state.cycles += 7
     elif opcode == 0xff:
         # RST 7
         state.rst(7)
