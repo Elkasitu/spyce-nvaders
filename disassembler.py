@@ -282,7 +282,7 @@ def main():
     # $2400-$3FFF: video RAM
     # $4000-     : RAM mirror
 
-    with open('invaders', 'rb') as f:
+    with open('TEST.COM', 'rb') as f:
         buffer = f.read()
 
     while pc < len(buffer):
