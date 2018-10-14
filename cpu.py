@@ -205,17 +205,16 @@ class State:
 
     def add(self, reg, carry=False):
         if isinstance(reg, int):
-            ans = self.a + reg
-            ans += 0 if not carry else self.cc.cy
             self.cycles += 7
         elif reg == 'm':
-            ans = self.a + self.memory[self.hl]
-            ans += 0 if not carry else self.cc.cy
+            reg = self.memory[self.hl]
             self.cycles += 7
         else:
-            ans = self.a + getattr(self, reg)
-            ans += 0 if not carry else self.cc.cy
+            reg = getattr(self, reg)
             self.cycles += 4
+        reg += 0 if not carry else self.cc.cy
+        self.cc.ac = (get_lsb(reg) + get_lsb(self.a)) > 0xf
+        ans = reg + self.a
         self.calc_flags(ans)
         self.a = ans & 0xff
 
