@@ -72,7 +72,8 @@ class Flags:
 class State:
 
     def __init__(self, memory):
-        self.memory = bytearray(memory) + bytearray(0x8000)  # ROM + RAM
+        rom = bytearray(memory)
+        self.memory = rom + bytearray(0x10000 - len(rom))  # ROM + RAM
         self.a = 0
         self._cc = Flags()
         self.b = 0
