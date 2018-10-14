@@ -232,8 +232,8 @@ class State:
             x = getattr(self, reg) if not carry else getattr(self, reg) + self.cc.cy
             self.cycles += 4
         # two's complement
-        x = (x ^ 0xff) + 0x01
-        self.cc.ac = ((x & 0xf) + (self.a & 0xf)) > 0xf
+        x = get_twos_comp(x)
+        self.cc.ac = (get_lsb(x) + get_lsb(self.a)) > 0xf
         ans = self.a + x
         self.cc.cy = ans <= 0xff
         self.cc.s = (ans & 0x80) != 0
