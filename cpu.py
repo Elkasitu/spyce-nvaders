@@ -60,7 +60,13 @@ class Flags:
         self.ac = 0
 
     def __int__(self):
-        return self.z | (self.s << 1) | (self.p << 2) | (self.cy << 3) | (self.ac << 4)
+        byte = self.cy
+        byte |= 0x02
+        byte |= self.p << 2
+        byte |= self.ac << 4
+        byte |= self.z << 6
+        byte |= self.s << 7
+        return byte
 
 
 class State:
@@ -359,11 +365,11 @@ class State:
 
     @cc.setter
     def cc(self, val):
-        self._cc.z = (0x01 == (val & 0x01))
-        self._cc.s = (0x02 == (val & 0x02))
-        self._cc.p = (0x04 == (val & 0x04))
-        self._cc.cy = (0x08 == (val & 0x08))
-        self._cc.ac = (0x10 == (val & 0x10))
+        self._cc.cy = (val & 0x01) != 0
+        self._cc.p = (val & 0x04) != 0
+        self._cc.ac = (val & 0x10) != 0
+        self._cc.z = (val & 0x40) != 0
+        self._cc.s = (val & 0x80) != 0
 
     @property
     def psw(self):
