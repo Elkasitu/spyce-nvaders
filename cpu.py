@@ -537,8 +537,8 @@ def emulate(state, debug=0, opcode=None):
     elif opcode == 0x17:
         # RAL
         x = state.a
-        state.a = (x << 1) | state.cc.cy
-        state.cc.cy = (x & 0x80) == 1
+        state.a = ((x << 1) & 0xff) | state.cc.cy
+        state.cc.cy = (x & 0x80) != 0
         state.cycles += 4
     elif opcode == 0x18:
         # NOP*
