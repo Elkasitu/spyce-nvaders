@@ -481,9 +481,9 @@ def emulate(state, debug=0, opcode=None):
         state.mvi('b', arg1)
     elif opcode == 0x07:
         # RLC
-        h = state.a & 0x80
+        h = state.a >> 7
         state.cc.cy = h
-        state.a = (state.a << 1) | h
+        state.a = ((state.a << 1) & 0xff) | h
         state.cycles += 4
     elif opcode == 0x08:
         # NOP*
