@@ -616,8 +616,12 @@ def emulate(state, debug=0, opcode=None):
         # DAD H
         state.dad('hl')
     elif opcode == 0x2a:
-        # LXI H, D16
-        state.lxi('hl', arg2, arg1)
+        # LHLD adr
+        adr = merge_bytes(arg2, arg1)
+        state.l = state.memory[adr]
+        state.h = state.memory[adr + 1]
+        state.cycles += 16
+        state.pc += 2
     elif opcode == 0x2b:
         # DCX H
         state.dcx('hl')
