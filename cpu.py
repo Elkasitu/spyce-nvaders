@@ -246,15 +246,16 @@ class State:
 
     def ana(self, reg):
         if isinstance(reg, int):
-            ans = self.a & reg
             self.cycles += 7
         elif reg == 'm':
-            ans = self.a & self.memory[self.hl]
+            reg = self.memory[self.hl]
             self.cycles += 7
         else:
-            ans = self.a & getattr(self, reg)
+            reg = getattr(self, reg)
             self.cycles += 4
 
+        self.cc.ac = (get_lsb(reg) + get_lsb(self.a)) > 0xf
+        ans = self.a & reg
         self.calc_flags(ans)
         self.a = ans & 0xff
 
@@ -269,6 +270,7 @@ class State:
             ans = self.a | getattr(self, reg)
             self.cycles += 4
 
+        self.cc.ac = 0
         self.calc_flags(ans)
         self.a = ans & 0xff
 
@@ -283,6 +285,7 @@ class State:
             ans = self.a ^ getattr(self, reg)
             self.cycles += 4
 
+        self.cc.ac = 0
         self.calc_flags(ans)
         self.a = ans & 0xff
 
