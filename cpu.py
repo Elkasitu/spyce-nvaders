@@ -297,7 +297,7 @@ class State:
             tc_val = get_twos_comp(self.memory[self.hl])
             self.cycles += 7
         else:
-            tc_val = get_twos_comp(self.memory[self.hl])
+            tc_val = get_twos_comp(getattr(self, reg))
             self.cycles += 4
         self.cc.ac = (get_lsb(self.a) + get_lsb(tc_val)) > 0xf
         ans = self.a + tc_val
