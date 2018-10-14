@@ -1269,6 +1269,7 @@ def emulate(state, debug=0, opcode=None):
         # PCHL
         state.pc = state.hl
         state.cycles += 5
+        return
     elif opcode == 0xea:
         # JPE adr
         return state.jmp(merge_bytes(arg2, arg1), 'p')
