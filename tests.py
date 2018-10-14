@@ -23,7 +23,7 @@ def execute_test(fname, success_check, debug=0):
         if debug:
             disassembler.disassemble(state.memory, state.pc)
         if debug > 1:
-            print("\tC=%d, P=%d, S=%d, Z=%d\n" % (state.cc.cy, state.cc.p, state.cc.s, state.cc.z))
+            print("\tC=%d, P=%d, S=%d, Z=%d, AC=%d\n" % (state.cc.cy, state.cc.p, state.cc.s, state.cc.z, state.cc.ac))
             print("\tA %02x B %02x C %02x D %02x E %02x H %02x L %02x SP %04x\n" % (
                 state.a, state.b, state.c, state.d, state.e, state.h, state.l, state.sp
             ))
