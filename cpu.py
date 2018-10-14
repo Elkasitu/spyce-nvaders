@@ -147,12 +147,13 @@ class State:
         """
         assert reg in 'b c d e h l m a'.split(), "Register %s is not valid" % reg
 
-        if reg == 'm':
-            ans = self.memory[self.hl] - 1
-        else:
-            ans = getattr(self, reg) - 1
+        x = self.memory[self.hl] if reg == 'm' else getattr(self, reg)
+        ans = x - 1
 
-        self.calc_flags(ans)
+        self.cc.ac = (get_lsb(x) - 1) > 0xf
+        self.cc.z = (ans & 0xff) == 0
+        self.cc.s = (ans & 0x80) != 0
+        self.cc.p = parity(ans & 0xff)
 
         if reg == 'm':
             self.memory[self.hl] = ans & 0xff
