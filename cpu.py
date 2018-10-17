@@ -414,31 +414,24 @@ class State:
     def bitmap(self):
 
         def bitarray(byte):
-            return [(byte >> i) & 1 for i in range(7, -1, -1)]
+            bits = [[0, 0, 0]] * 8
+            for i in range(len(bits)):
+                if byte & 1:
+                    bits[i] = [255, 255, 255]
+                byte = byte >> 1
+            return bits[::-1]
 
-        def bit2rgb(bit):
-            if bit:
-                return [255, 255, 255]
-            return [0, 0, 0]
+        video_ram = self.memory[0x2400:0x4000]
 
-        video_ram = self.memory[0x2400:]
-
-        bytemap = []
-        for i in range(224):
-            start = i * 32
-            # Inverse bcz little-endianness?
-            bytemap.append(video_ram[start:start + 32][::-1])
-
+        bits = []
         bitmap = []
-        for row in bytemap:
-            line = []
-            for byte in row:
-                line += bitarray(byte)
-            bitmap.append(line)
-
-        for i, row in enumerate(bitmap):
-            for j, col in enumerate(row):
-                bitmap[i][j] = bit2rgb(col)
+        for i, byte in enumerate(video_ram):
+            if i != 0 and (i % 32) == 0:
+                bitmap.append(list(reversed(bits)))
+                bits = []
+            bits += list(reversed(bitarray(byte)))
+            if i == len(video_ram) - 1:
+                bitmap.append(list(reversed(bits)))
 
         return np.array(bitmap)
 
@@ -1377,7 +1370,6 @@ def main():
                 # Screen refresh
                 if not args.headless:
                     # TODO: optimize by keeping track of previous bitmap and comparing
-                    screen.fill((0, 0, 0))
                     screen.convert()
                     pygame.surfarray.blit_array(screen, state.bitmap)
                     pygame.display.flip()
