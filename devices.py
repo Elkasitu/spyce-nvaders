@@ -8,10 +8,10 @@ class ShiftRegister:
         return (self._register >> self._offset) & 0xff
 
     def shift(self, val):
-        self._register = (self._register >> 8) | (val << 8)
+        self._register = (self._register >> 8) | (val << 7)
 
     def set_offset(self, val):
-        self._offset = val & 0x08
+        self._offset = (val ^ 0xff) & 0x07
 
 
 class Controller:
