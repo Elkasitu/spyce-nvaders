@@ -2,14 +2,14 @@
 A midway space invaders arcade emulator made with python.
 
 ## controls
-left, right arrow keys - P1 move
-left ctrl - P1 shoot
-a, d - P2 move
-space - P2 shoot
-return - 1P start
-backspace - 2P start
-c - insert credit
-esc - quit
+- left, right arrow keys - P1 move
+- left ctrl - P1 shoot
+- a, d - P2 move
+- space - P2 shoot
+- return - 1P start
+- backspace - 2P start
+- c - insert credit
+- esc - quit
 
 ## why?
 this was a bad idea, python is *really* slow for making an interpreted emulator, there are probably a lot of optimizations that can be done to make it playable at 100% speed, one of which could be using numpy arrays for the memory, or, at the very least, for the video memory, as the biggest bottleneck is the `rasterize` method, perhaps multi-processing could help a lot with this as well.
