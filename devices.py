@@ -17,8 +17,12 @@ class ShiftRegister:
 class Controller:
 
     def __init__(self):
-        self._p1_reg = 0b00001100
-        self._p2_reg = 0b00000001
+        self._p1_reg = 0x08
+        self._p2_reg = 0x00
+
+    def reset(self):
+        self._p1_reg = 0x08
+        self._p2_reg = 0x00
 
     def get_p1(self):
         return self._p1_reg
@@ -26,14 +30,32 @@ class Controller:
     def get_p2(self):
         return self._p2_reg
 
-    def toggle_start_p1(self):
+    def start_p1(self):
+        self._p1_reg |= 0x04
+
+    def start_p2(self):
         self._p1_reg |= 0x02
 
-    def toggle_left_p1(self):
+    def mv_left_p1(self):
         self._p1_reg |= 0x20
 
-    def toggle_right_p1(self):
+    def mv_left_p2(self):
+        self._p2_reg |= 0x20
+
+    def mv_right_p1(self):
         self._p1_reg |= 0x40
+
+    def mv_right_p2(self):
+        self._p2_reg |= 0x40
+
+    def shoot_p1(self):
+        self._p1_reg |= 0x10
+
+    def shoot_p2(self):
+        self._p2_reg |= 0x10
+
+    def add_credit(self):
+        self._p1_reg |= 0x01
 
 
 class Display:

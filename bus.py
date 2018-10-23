@@ -33,23 +33,38 @@ class Bus(object):
     def loop(self, cycles):
         refresh = devices['dspl'].refresh(cycles)
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                sys.exit(0)
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    sys.exit(0)
-                if event.key == pygame.K_LEFT:
-                    devices['ctrl'].toggle_left_p1()
-                elif event.key == pygame.K_RIGHT:
-                    devices['ctrl'].toggle_right_p1()
-                elif event.key == pygame.K_RETURN:
-                    devices['ctrl'].toggle_start_p1()
-
         if refresh:
             self.interrupts.extend(refresh)
             # CPU clock tick
             return True
+        return False
+
+    def handle_events(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                sys.exit(0)
+            elif event.type == pygame.KEYDOWN:
+                devices['ctrl'].reset()
+                if event.key == pygame.K_ESCAPE:
+                    sys.exit(0)
+                if event.key == pygame.K_LEFT:
+                    devices['ctrl'].mv_left_p1()
+                elif event.key == pygame.K_RIGHT:
+                    devices['ctrl'].mv_right_p1()
+                elif event.key == pygame.K_RETURN:
+                    devices['ctrl'].start_p1()
+                elif event.key == pygame.K_BACKSPACE:
+                    devices['ctrl'].start_p2()
+                elif event.key == pygame.K_LCTRL:
+                    devices['ctrl'].shoot_p1()
+                elif event.key == pygame.K_a:
+                    devices['ctrl'].mv_left_p2()
+                elif event.key == pygame.K_d:
+                    devices['ctrl'].mv_right_p2()
+                elif event.key == pygame.K_SPACE:
+                    devices['ctrl'].shoot_p2()
+                elif event.key == pygame.K_c:
+                    devices['ctrl'].add_credit()
 
 
 bus = Bus()

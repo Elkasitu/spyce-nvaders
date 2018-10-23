@@ -410,16 +410,15 @@ class State:
     def hl(self, val):
         self.h, self.l = extract_bytes(val)
 
-    @property
-    def bitmap(self):
+    def rasterize(self):
 
         def bitarray(byte):
             bits = [[0, 0, 0]] * 8
             for i in range(len(bits)):
                 if byte & 1:
                     bits[i] = [255, 255, 255]
-                byte = byte >> 1
-            return bits[::-1]
+                byte >>= 1
+            return list(reversed(bits))
 
         video_ram = self.memory[0x2400:0x4000]
 
@@ -1365,13 +1364,13 @@ def main():
 
     count = 1
     while 1:
+        bus.handle_events()
         if state.int_enable:
             if bus.loop(state.cycles):
                 # Screen refresh
                 if not args.headless:
-                    # TODO: optimize by keeping track of previous bitmap and comparing
                     screen.convert()
-                    pygame.surfarray.blit_array(screen, state.bitmap)
+                    pygame.surfarray.blit_array(screen, state.rasterize())
                     pygame.display.flip()
                 state.cycles = 0
                 emulate(state, args.debug, bus.interrupts.popleft())
