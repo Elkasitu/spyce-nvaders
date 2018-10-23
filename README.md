@@ -23,6 +23,3 @@ this repo probably won't see much action as I plan on making other emulators (in
 - [ ] Cleanup code (structure)
 - [ ] Colorize
 - [ ] Implement sound
-
-## license
-this piece of work is released into the public domain, that means anyone is free to do whatever they see fit with it
